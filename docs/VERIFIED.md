@@ -11,4 +11,5 @@ None yet. No features have been confirmed on a real iPhone.
 
 ## Sponsor integrations
 
-None verified.
+- Moss NOT used; the local knowledge-base lookup is the planned cut-ladder
+  fallback. No Moss integration claim.

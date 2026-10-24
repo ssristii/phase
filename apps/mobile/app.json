@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Phase",
+    "slug": "phase",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "phase",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Phase uses the microphone for your voice check-in."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": false
+    }
+  }
+}

@@ -1,22 +1,13 @@
 # Phase: problem and MVP plan
 
-**Problem.** People who track cycles often have to translate a cycle date and
-today's symptoms into workout and grocery choices themselves. Generic plans
-miss the user's current state; cycle-based advice can overstate limited evidence.
-Phase treats cycle phase as a starting prior, lets reported state take priority,
-and gives each recommendation a cited reason and evidence label.
+**Problem.** People who track cycles often have to translate a cycle date and today's symptoms into workout and grocery choices themselves. Generic plans miss the user's current state; cycle-based advice can overstate limited evidence.
+Phase treats cycle phase as a starting prior, lets reported state take priority, and gives each recommendation a cited reason and evidence label.
 
-**Target user.** An adult iPhone user who tracks or wants to understand their
-cycle, plans exercise and groceries, and wants practical guidance without
-fertility claims, weight-loss framing, or sharing identity details.
+**Target user.** An adult iPhone user who tracks or wants to understand their cycle, plans exercise and groceries, and wants practical guidance without fertility claims, weight-loss framing, or sharing identity details.
 
-**Fields and why they exist.** Age is used only to enforce the 18+ gate. Last
-period start drives the cycle estimate; “unsure” disables phase claims and
-enables symptom-based guidance. Goal and up to five current exercises shape the
-workout plan. Dietary preference filters the grocery list. Check-in flow supports
-the heavy-bleeding safety trigger; mood supports symptom-based guidance and the
-self-reported summary; energy and sleep inform session adjustment; pain informs
-session adjustment and the severe-pain safety trigger; workout done measures
+**Fields and why they exist.** Age is used only to enforce the 18+ gate. Last period start drives the cycle estimate; “unsure” disables phase claims and enables symptom-based guidance. Goal and up to five current exercises shape the
+workout plan. Dietary preference filters the grocery list. Check-in flow supports the heavy-bleeding safety trigger; mood supports symptom-based guidance and the
+self-reported summary; energy and sleep inform session adjustment; pain informs session adjustment and the severe-pain safety trigger; workout done measures
 adherence. No name, email, phone, calories, or weight-loss target is collected.
 
 **Three riskiest assumptions.**

@@ -9,9 +9,10 @@ Official starting references provided:
 - **Cartesia:** [Documentation overview](https://docs.cartesia.ai/get-started/overview)
 - **Gemini:** [Gemini API documentation](https://ai.google.dev/gemini-api/docs)
 
-Before implementation, save the relevant official pages or excerpts in this
-directory and read them. In particular, verify the exact SDK signatures and
-runtime-specific requirements for:
+The relevant API notes, signatures, and official page references are recorded
+in [cartesia.md](./cartesia.md) and [gemini.md](./gemini.md). Read the original
+pages again if implementation reaches beyond those documented API surfaces.
+In particular, verify the runtime-specific requirements for:
 
 - **Cartesia:** streaming speech-to-text in the chosen client/runtime, live
   transcript events, and Sonic text-to-speech playback.
