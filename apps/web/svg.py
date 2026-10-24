@@ -1,4 +1,4 @@
-﻿"""Cadence SVG generators."""
+﻿"""Phase SVG generators."""
 
 from __future__ import annotations
 

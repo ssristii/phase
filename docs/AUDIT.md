@@ -1,7 +1,7 @@
 # Phase requirements audit
 
 **Audit basis:** repository source and documentation as they exist at commit
-`e1f1ee4`, reconciled against the latest Cadence requirements. No behavior is
+`e1f1ee4`, reconciled against the latest Phase requirements. No behavior is
 inferred from plans or earlier summaries. The only real-device verification
 recorded in `docs/VERIFIED.md` is
 “None yet.”
@@ -102,7 +102,7 @@ Streamlit app remains the primary runnable demo; no PWA claims will be made.
 
 ## Latest requirements audit addendum
 
-The user's newest Cadence specification supersedes the prior presentation-only
+The user's newest Phase specification supersedes the prior presentation-only
 limit and the former fallback-text preference. Logic and Gemini calls may now
 be changed. The earlier Step 2 profile and template work remains the actual
 code; it is not evidence that the remaining steps are implemented.

@@ -1,4 +1,4 @@
-﻿"""Cadence UI components."""
+﻿"""Phase UI components."""
 
 from __future__ import annotations
 

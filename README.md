@@ -12,7 +12,7 @@ Streamlit and Python, with an optional Express sponsor API and MongoDB.
 
 ## Technical details
 
-Cadence's cycle and readiness estimates run locally in Python. They are small,
+Phase's cycle and readiness estimates run locally in Python. They are small,
 per-user online models, not pretrained or deep-learning models.
 
 - **M1 (cycle length and bleed length):** Bayesian Normal-Inverse-Gamma

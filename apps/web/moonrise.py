@@ -1,4 +1,4 @@
-"""Moonrise intro animation markup for Cadence."""
+"""Moonrise intro animation markup for Phase."""
 
 from __future__ import annotations
 def moonrise_markup() -> str:

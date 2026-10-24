@@ -43,6 +43,6 @@ await client.interactions.create({
 });
 ```
 
-Cadence uses this for `/api/gemini/checkin-audio` with a JSON schema for
+Phase uses this for `/api/gemini/checkin-audio` with a JSON schema for
 check-in fields. Do not send login codes or account IDs. Audio is held only
 in memory until the user confirms or clears the check-in.

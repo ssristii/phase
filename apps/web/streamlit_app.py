@@ -56,6 +56,16 @@ def connect_in_memory_cached(database_name: str):
 
 load_dotenv(Path(__file__).with_name(".env"))
 TODAY = date.today()
+def _dev_tools_enabled() -> bool:
+    if os.environ.get("NODE_ENV") == "development":
+        return True
+    if os.environ.get("PHASE_DEV") == "1":
+        return True
+    try:
+        return str(st.query_params.get("dev", "")).lower() in {"1", "true", "yes"}
+    except Exception:
+        return False
+
 PHASES = ("Menstrual", "Follicular", "Ovulatory", "Luteal")
 GOALS = ("Strength", "Muscle", "Endurance", "General fitness", "Energy")
 WORKOUT_SPLITS = (
@@ -311,7 +321,7 @@ def discard_g1_audio() -> None:
 
 # Streamlit 1.53.1 signature: set_page_config(page_title, page_icon, layout, initial_sidebar_state, menu_items).
 st.set_page_config(
-    page_title="Cadence",
+    page_title="Phase",
     page_icon=None,
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -328,8 +338,8 @@ inject_theme(st.session_state["star_positions"])
 st.markdown(teardrop_layer_html(st.session_state["teardrop_positions"]), unsafe_allow_html=True)
 st.markdown(
     """
-    <div class="phase-brand" aria-label="Cadence, a cycle-aware wellness guide">
-      <div class="phase-brand-title">CADENCE</div>
+    <div class="phase-brand" aria-label="Phase, a cycle-aware wellness guide">
+      <div class="phase-brand-title">PHASE</div>
       <div class="phase-brand-divider"><span>◇</span></div>
       <div class="phase-brand-subtitle">A cycle-aware guide, led by how you feel</div>
     </div>
@@ -360,11 +370,11 @@ def connect_database(uri: str, database_name: str):
 
 
 def show_auth_page() -> None:
-    st.title("Cadence")
+    st.title("Phase")
     st.write("A cycle-aware plan that starts with how you feel today.")
     st.subheader("Your account")
     st.write(
-        "No email, phone number, or password. Cadence creates a private 10-character "
+        "No email, phone number, or password. Phase creates a private 10-character "
         "code for sign-in. Save it somewhere safe; if it is lost, the account "
         "and its data cannot be recovered."
     )
@@ -1013,8 +1023,7 @@ def phase_wheel(
 
 
 def show_dashboard(account, profile: dict, checkin: dict) -> None:
-    if account.get("demo_account") or account.get("is_demo") or account.get("demo"):
-        if is_demo_mode():
+    if (account.get("demo_account") or account.get("is_demo") or account.get("demo")) and is_demo_mode() and _dev_tools_enabled():
             with st.container(border=True):
                 st.caption("Account controls")
                 if st.button("Reset data", key="demo_reset"):
@@ -1111,7 +1120,7 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
             st.session_state.pop(key, None)
         st.rerun()
 
-    st.title("Your Cadence dashboard")
+    st.title("Your Phase dashboard")
     st.caption("Your reported state leads today's plan.")
     readback_text = st.session_state.get("voice_readback_text")
     if isinstance(readback_text, str) and readback_text.strip():
@@ -1333,7 +1342,7 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         checkins = list_checkins(database.checkins, account["_id"])
         stats = compute_cycle_stats(checkins, today=TODAY)
         with st.container(border=True):
-            st.markdown("### Cadence summary")
+            st.markdown("### Phase summary")
             cols = st.columns(2)
             cols[0].metric("Cycles logged", stats.cycles_logged)
             cols[1].metric("Mean", format_stat(stats.mean))
@@ -1353,7 +1362,7 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         st.download_button(
             "Export PDF",
             data=pdf,
-            file_name="cadence-report.pdf",
+            file_name="phase-report.pdf",
             mime="application/pdf",
         )
         with st.container(border=True):
@@ -1371,14 +1380,14 @@ database_name = (os.getenv("MONGODB_DATABASE") or "phase").strip() or "phase"
 if not mongo_uri:
     database = connect_in_memory_cached(database_name)
     if database is None:
-        st.title("Cadence")
+        st.title("Phase")
         st.error("Account service is unavailable.")
         st.stop()
 else:
     try:
         database = connect_database(mongo_uri, database_name)
     except PyMongoError:
-        st.title("Cadence")
+        st.title("Phase")
         st.error(
             "Could not connect to your account service. Please try again later."
         )
@@ -1386,7 +1395,7 @@ else:
 
 if demo_mode_conflicts_with_production():
     print("ERROR: DEMO_MODE=1 cannot be used with PRODUCTION=1 or ENVIRONMENT=production", flush=True)
-    st.title("Cadence")
+    st.title("Phase")
     st.error("Refusing to start: demo mode cannot be enabled in production.")
     st.stop()
 
@@ -1395,7 +1404,7 @@ if is_demo_mode():
         ensure_demo_account(database, seed=42, today=TODAY)
     except Exception as error:
         print(f"ERROR: demo account seeding failed: {error}", flush=True)
-        st.title("Cadence")
+        st.title("Phase")
         st.error("Account seeding failed.")
 
         st.stop()

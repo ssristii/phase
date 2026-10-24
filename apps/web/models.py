@@ -1,4 +1,4 @@
-"""Per-user online models for Cadence.
+"""Per-user online models for Phase.
 
 M1: cycle-length and bleed-length Normal-Inverse-Gamma posteriors with
 exponential forgetting. M2: online logistic regression for readiness.
