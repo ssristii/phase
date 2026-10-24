@@ -261,12 +261,12 @@ st.markdown(
         pointer-events: none;
     }
     [data-testid="stVerticalBlockBorderWrapper"]::before {
-        content: "❧";
+        content: "·";
         top: 0.4rem;
         left: 0.65rem;
     }
     [data-testid="stVerticalBlockBorderWrapper"]::after {
-        content: "❧";
+        content: "·";
         bottom: 0.4rem;
         right: 0.65rem;
         transform: rotate(180deg);
