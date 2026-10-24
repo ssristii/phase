@@ -520,6 +520,7 @@ export function createApp(config: AppConfig = {}): express.Express {
     response,
     _next,
   ) => {
+    console.error("phase api error:", error);
     if (
       error instanceof Error &&
       "type" in error &&
