@@ -536,10 +536,17 @@ st.markdown(
         -webkit-text-fill-color: #7A4A52 !important;
         background: rgba(243, 233, 210, 0.7) !important;
         font-weight: 700;
+        font-size: 1rem !important;
+        white-space: nowrap !important;
+        min-width: 0 !important;
+    }
+    [data-testid="stSegmentedControl"] {
+        gap: 0.35rem !important;
     }
     [data-testid="stSegmentedControl"] button[aria-checked="true"] {
         background: linear-gradient(180deg, var(--crimson), var(--cherry)) !important;
         color: var(--parchment) !important;
+        -webkit-text-fill-color: var(--parchment) !important;
     }
     [data-testid="stSelectbox"] [data-baseweb="select"] {
         border-radius: 999px !important;
@@ -547,19 +554,28 @@ st.markdown(
         background: rgba(243, 233, 210, 0.7) !important;
     }
     .luna-avatar {
-        width: 48px;
-        height: 48px;
+        width: 56px;
+        height: 56px;
         border-radius: 50%;
         border: 2px solid var(--gold);
-        background: radial-gradient(circle at 30% 30%, var(--champagne), var(--cherry));
+        background:
+            radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.55), transparent 34%),
+            radial-gradient(circle at 50% 50%, var(--champagne), var(--cherry));
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        color: var(--parchment);
-        font-family: "Playfair Display", Georgia, serif;
-        font-weight: 700;
-        font-size: 1.2rem;
-        box-shadow: 0 4px 10px rgba(43, 27, 23, 0.25);
+        box-shadow:
+            0 0 0 6px rgba(201, 162, 75, 0.14),
+            0 8px 18px rgba(43, 27, 23, 0.28);
+        animation: luna-pulse 3.2s ease-in-out infinite;
+    }
+    .luna-avatar svg { display: block; }
+    @keyframes luna-pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 6px rgba(201, 162, 75, 0.14), 0 8px 18px rgba(43, 27, 23, 0.28); }
+        50% { transform: scale(1.04); box-shadow: 0 0 0 9px rgba(201, 162, 75, 0.22), 0 10px 22px rgba(43, 27, 23, 0.34); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .luna-avatar { animation: none; }
     }
     </style>
     """,
@@ -1294,8 +1310,17 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
     if isinstance(readback_text, str) and readback_text.strip():
         with st.container(border=True, key="card_luna_readback"):
             st.markdown(
-                '<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.3rem;">'
-                '<span class="luna-avatar">L</span><strong>Luna</strong></div>',
+                '<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.35rem;">'
+                '<span class="luna-avatar" aria-hidden="true">'
+                '<svg viewBox="0 0 56 56" width="40" height="40" fill="none" xmlns="http://www.w3.org/2000/svg">'
+                '<defs><radialGradient id="luna-moon" cx="35%" cy="30%"><stop offset="0%" stop-color="#FFF7E6"/><stop offset="100%" stop-color="#C9A24B"/></radialGradient></defs>'
+                '<circle cx="28" cy="28" r="24" fill="url(#luna-moon)"/>'
+                '<path d="M34 14a16 16 0 1 0 0 28 13 13 0 0 1 0-28Z" fill="#F3E5AB" opacity="0.85"/>'
+                '<circle cx="20" cy="22" r="2.6" fill="#2B1B17"/>'
+                '<circle cx="32" cy="22" r="2.6" fill="#2B1B17"/>'
+                '<path d="M20 31c3 3.6 13 3.6 16 0" stroke="#2B1B17" stroke-width="2.2" stroke-linecap="round"/>'
+                '</svg></span>'
+                '<strong>Luna</strong></div>',
                 unsafe_allow_html=True,
             )
             st.write(readback_text)
