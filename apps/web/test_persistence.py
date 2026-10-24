@@ -13,6 +13,7 @@ from persistence import (
     hash_login_code,
     lock_phase_plan,
     save_checkin,
+    save_phase_workout_plan,
     stored_profile,
 )
 
@@ -65,11 +66,26 @@ class MemoryCollection:
             for key, value in update["$setOnInsert"].items():
                 document.setdefault(key, deepcopy(value))
 
+    def update_many(self, query, update):
+        for document in self.documents:
+            if all(document.get(key) == value for key, value in query.items()):
+                document.update(deepcopy(update.get("$set", {})))
+
     def count_documents(self, query):
         return sum(
             1
             for document in self.documents
             if all(document.get(key) == value for key, value in query.items())
+        )
+
+    def distinct(self, field, query):
+        return list(
+            {
+                document[field]
+                for document in self.documents
+                if field in document
+                and all(document.get(key) == value for key, value in query.items())
+            }
         )
 
 
@@ -121,36 +137,108 @@ class PersistenceTests(unittest.TestCase):
     def test_four_phase_hearts_can_lock_a_phase_keyed_plan(self):
         hearts = MemoryCollection()
         locks = MemoryCollection()
-        for week in range(1, 5):
-            add_phase_heart(hearts, "account-1", "Luteal", "workout", week)
-        add_phase_heart(hearts, "account-1", "Luteal", "workout", 1)
-        self.assertEqual(count_phase_hearts(hearts, "account-1", "Luteal"), 4)
+        for phase in ("Menstrual", "Follicular", "Ovulatory", "Luteal"):
+            add_phase_heart(hearts, "account-1", phase)
+        add_phase_heart(hearts, "account-1", "Luteal")
+        self.assertEqual(count_phase_hearts(hearts, "account-1"), 4)
 
-        lock_phase_plan(
+        save_phase_workout_plan(
             locks,
             "account-1",
             "Luteal",
-            {"title": "Gentle strength"},
-            ["Beans", "Sweet potatoes"],
+            [{"title": "Gentle strength"}],
         )
+        self.assertIsNone(get_phase_lock(locks, "account-1", "Luteal"))
+        lock_phase_plan(locks, "account-1")
         self.assertEqual(
-            get_phase_lock(locks, "account-1", "Luteal")["workout_plan"]["title"],
+            get_phase_lock(locks, "account-1", "Luteal")["workout_plan"][0]["title"],
             "Gentle strength",
         )
 
     def test_unsure_profile_stores_no_period_date(self):
         profile = stored_profile(
             {
-                "unsure": True,
+                "cycle_tracking_mode": "unsure",
                 "last_period": date(2026, 10, 24),
-                "cycle_length": None,
                 "goal": "Strength",
-                "exercises": [],
-                "diet": "No preference",
+                "workouts_per_week": 3,
+                "usual_split": "Full body",
             }
         )
         self.assertTrue(profile["cycle_date_unsure"])
         self.assertIsNone(profile["last_period_start"])
+        self.assertEqual(
+            set(profile),
+            {
+                "version",
+                "cycle_tracking_mode",
+                "cycle_date_unsure",
+                "last_period_start",
+                "cycle_length",
+                "goal",
+                "workouts_per_week",
+                "usual_split",
+            },
+        )
+
+    def test_profile_stores_only_the_selected_setup_fields(self):
+        profile = stored_profile(
+            {
+                "cycle_tracking_mode": "period_date",
+                "last_period": date(2026, 10, 1),
+                "goal": "Endurance",
+                "workouts_per_week": 5,
+                "usual_split": "Push/Pull/Legs",
+            }
+        )
+
+        self.assertEqual(profile["version"], 2)
+        self.assertEqual(profile["last_period_start"], "2026-10-01")
+        self.assertEqual(profile["workouts_per_week"], 5)
+        self.assertEqual(profile["usual_split"], "Push/Pull/Legs")
+        self.assertEqual(profile["goal"], "Endurance")
+
+    def test_contraception_profile_uses_symptom_mode_without_storing_a_date(self):
+        profile = stored_profile(
+            {
+                "cycle_tracking_mode": "hormonal_contraception",
+                "last_period": date(2026, 10, 1),
+                "goal": "General fitness",
+                "workouts_per_week": 2,
+                "usual_split": "Not sure",
+            }
+        )
+
+        self.assertTrue(profile["cycle_date_unsure"])
+        self.assertIsNone(profile["last_period_start"])
+        self.assertEqual(
+            profile["cycle_tracking_mode"],
+            "hormonal_contraception",
+        )
+
+    def test_profile_rejects_workout_frequency_outside_one_to_seven(self):
+        with self.assertRaises(ValueError):
+            stored_profile(
+                {
+                    "cycle_tracking_mode": "unsure",
+                    "last_period": None,
+                    "goal": "Strength",
+                    "workouts_per_week": 8,
+                    "usual_split": "Full body",
+                }
+            )
+
+    def test_period_date_mode_requires_a_date(self):
+        with self.assertRaises(ValueError):
+            stored_profile(
+                {
+                    "cycle_tracking_mode": "period_date",
+                    "last_period": None,
+                    "goal": "Strength",
+                    "workouts_per_week": 3,
+                    "usual_split": "Full body",
+                }
+            )
 
 
 if __name__ == "__main__":

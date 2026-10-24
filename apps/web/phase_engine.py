@@ -76,8 +76,8 @@ def predict_cycle(
             phase=None,
             confidence=None,
             reason=(
-                "You marked cycle dates as unsure, so guidance uses reported "
-                "symptoms only and makes no phase claim."
+                "Cycle timing is not estimated in this mode; daily guidance "
+                "uses the symptoms you report."
             ),
             cycle_day=None,
             fertile_window=None,
@@ -103,9 +103,9 @@ def predict_cycle(
         phase = "Luteal"
 
     confidence = 0.3 if population_default else 0.45
-    basis = "a population-default 28-day cycle" if population_default else "your reported start date and cycle length"
+    basis = "typical cycle timing" if population_default else "your reported period start"
     reason = (
-        f"{phase} is a low-confidence estimate based on {basis}; "
+        f"{phase} is estimated from {basis}; "
         "logged symptoms take priority."
     )
     ovulation_day = length - 14
@@ -168,6 +168,8 @@ def build_plan(
     exercise = exercises[0] if exercises else "Bodyweight strength"
     focus = {
         "Strength": "strength practice",
+        "Muscle": "muscle-building strength practice",
+        "Endurance": "endurance-focused movement",
         "General fitness": "balanced movement",
         "Energy": "steady, manageable movement",
     }.get(goal, "comfortable movement")
@@ -179,13 +181,13 @@ def build_plan(
         )
     elif phase:
         reason = (
-            f"{phase} is a low-confidence starting prior for {focus}; "
+            f"{phase} is a starting estimate for {focus}; "
             "today's reported state takes priority."
         )
     else:
         reason = (
-            f"Cycle dates are unsure, so this {focus} session uses symptom-based "
-            "guidance without a phase claim."
+            f"Cycle-based adjustment is off; this {focus} session uses "
+            "symptom-based guidance."
         )
 
     return {
@@ -194,7 +196,6 @@ def build_plan(
         "sets": 2 if intensity == 1 else 3,
         "reps": "6 to 8 controlled reps" if intensity == 1 else "8 to 10 comfortable reps",
         "reason": reason,
-        "confidence": "Low; a starting prior, not a prediction of ability.",
         "adjusted": int(adjusted),
     }
 
@@ -220,67 +221,80 @@ def validate_exercises(raw: str) -> tuple[list[str], list[str]]:
 def weekly_workout_schedule(
     phase: str | None,
     goal: str,
-    exercises: list[str],
+    workouts_per_week: int,
+    usual_split: str,
     energy: int,
     sleep_hours: float,
     pain: int,
     today: date,
 ) -> list[dict[str, object]]:
-    weekly_template = (
-        ("Monday", "Strength A", "workout"),
-        ("Tuesday", "Easy movement", "recovery"),
-        ("Wednesday", "Strength B", "workout"),
-        ("Thursday", "Rest and mobility", "rest"),
-        ("Friday", "Strength C", "workout"),
-        ("Saturday", "Easy cardio", "recovery"),
-        ("Sunday", "Rest", "rest"),
-    )
-    goal_exercises = {
-        "Strength": ("Goblet squat", "Dumbbell row", "Glute bridge"),
-        "General fitness": ("Bodyweight squat", "Incline push-up", "Glute bridge"),
-        "Energy": ("Bodyweight squat", "Glute bridge", "Calf raise"),
-    }.get(goal, ("Bodyweight squat", "Glute bridge", "Walking"))
-    strength_pool = list(
-        dict.fromkeys(
-            [name for name in exercises if name not in RECOVERY_EXERCISES]
-            + list(goal_exercises)
-        )
-    )
-    recovery_pool = [
-        name for name in exercises if name in RECOVERY_EXERCISES
-    ] or ["Walking", "Mobility flow"]
-    schedule: list[dict[str, object]] = []
-    strength_count = 0
-    recovery_count = 0
+    if workouts_per_week not in range(1, 8):
+        raise ValueError("Workouts per week must be between 1 and 7.")
+    split_templates = {
+        "Full body": (
+            ("Full body A", ("Goblet squat", "Dumbbell row", "Glute bridge")),
+            ("Full body B", ("Romanian deadlift", "Incline push-up", "Dead bug")),
+            ("Full body C", ("Split squat", "Overhead press", "Farmer carry")),
+        ),
+        "Upper/Lower": (
+            ("Upper body", ("Dumbbell row", "Dumbbell chest press", "Lateral raise")),
+            ("Lower body", ("Goblet squat", "Romanian deadlift", "Glute bridge")),
+        ),
+        "Push/Pull/Legs": (
+            ("Push", ("Incline push-up", "Overhead press", "Triceps extension")),
+            ("Pull", ("Dumbbell row", "Biceps curl", "Farmer carry")),
+            ("Legs", ("Goblet squat", "Romanian deadlift", "Calf raise")),
+        ),
+        "Body-part split": (
+            ("Chest and triceps", ("Dumbbell chest press", "Incline push-up", "Triceps extension")),
+            ("Back and biceps", ("Dumbbell row", "Resistance-band row", "Biceps curl")),
+            ("Legs", ("Goblet squat", "Split squat", "Calf raise")),
+            ("Shoulders and core", ("Overhead press", "Lateral raise", "Dead bug")),
+        ),
+        "Not sure": (
+            ("Full body", ("Bodyweight squat", "Dumbbell row", "Glute bridge")),
+        ),
+    }
+    if usual_split not in split_templates:
+        raise ValueError("Choose a supported workout split.")
 
-    for weekday, title, day_type in weekly_template:
+    weekdays = (
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    )
+    training_days = {
+        (index * len(weekdays)) // workouts_per_week
+        for index in range(workouts_per_week)
+    }
+    split = split_templates[usual_split]
+    schedule: list[dict[str, object]] = []
+
+    for day_index, weekday in enumerate(weekdays):
+        is_training_day = day_index in training_days
+        title, day_exercises = split[
+            sum(index in training_days for index in range(day_index)) % len(split)
+        ] if is_training_day else ("Rest", ())
         item: dict[str, object] = {
             "day": weekday,
             "title": title,
-            "type": day_type,
+            "type": "workout" if is_training_day else "rest",
             "is_today": weekday == today.strftime("%A"),
         }
-        if day_type == "rest":
+        if not is_training_day:
             item.update(
                 {
                     "exercises": [],
                     "sets": 0,
-                    "reps": "Rest, or choose gentle mobility if comfortable.",
-                    "reason": "A planned recovery day; adjust to how you feel.",
+                    "reps": "Rest and recover.",
+                    "reason": "A planned rest day between training sessions.",
                 }
             )
         else:
-            if day_type == "workout":
-                day_exercises = [
-                    strength_pool[(strength_count * 2 + offset) % len(strength_pool)]
-                    for offset in range(3)
-                ]
-                strength_count += 1
-            else:
-                day_exercises = [
-                    recovery_pool[recovery_count % len(recovery_pool)]
-                ]
-                recovery_count += 1
             day_energy = energy if item["is_today"] else 3
             day_sleep = sleep_hours if item["is_today"] else 7.0
             day_pain = pain if item["is_today"] else 0
@@ -295,9 +309,11 @@ def weekly_workout_schedule(
             item.update(
                 {
                     "title": (
-                        plan["title"] if item["is_today"] else title
+                        f"{title} - {plan['title']}"
+                        if item["is_today"]
+                        else title
                     ),
-                    "exercises": day_exercises,
+                    "exercises": list(day_exercises),
                     "sets": plan["sets"],
                     "reps": plan["reps"],
                     "reason": (
@@ -310,67 +326,3 @@ def weekly_workout_schedule(
             )
         schedule.append(item)
     return schedule
-
-
-def grocery_sections(
-    phase: str | None,
-    dietary_preference: str = "No preference",
-) -> dict[str, list[str]]:
-    phase_produce = {
-        "Menstrual": ["Spinach", "Oranges", "Carrots", "Apples"],
-        "Follicular": ["Bell peppers", "Berries", "Cucumber", "Lemons"],
-        "Ovulatory": ["Tomatoes", "Cucumber", "Grapes", "Avocado"],
-        "Luteal": ["Sweet potatoes", "Bananas", "Broccoli", "Pears"],
-        None: ["Leafy greens", "Seasonal fruit", "Carrots", "Cucumbers"],
-    }[phase]
-    grains = [
-        "Oats",
-        "Brown rice",
-        "Quinoa",
-        "Whole-grain bread",
-    ]
-    if dietary_preference == "Gluten-free":
-        grains = [
-            "Certified gluten-free oats",
-            "Brown rice",
-            "Quinoa",
-            "Gluten-free bread",
-        ]
-    return {
-        "Produce": phase_produce,
-        "Protein": [
-            "Lentils",
-            "Chickpeas",
-            "Black beans",
-            "Tofu",
-            "Edamame",
-        ],
-        "Grains and starches": grains,
-        "Pantry": [
-            "Pumpkin seeds",
-            "Peanut butter",
-            "Olive oil",
-            "Canned tomatoes",
-        ],
-        "Flavor and extras": [
-            "Garlic",
-            "Onions",
-            "Ginger",
-            "Hummus",
-        ],
-    }
-
-
-def grocery_list(phase: str | None, dietary_preference: str) -> list[str]:
-    if dietary_preference not in {
-        "No preference",
-        "Vegetarian",
-        "Vegan",
-        "Gluten-free",
-    }:
-        raise ValueError("Choose a supported dietary preference.")
-    return [
-        item
-        for section in grocery_sections(phase, dietary_preference).values()
-        for item in section
-    ]

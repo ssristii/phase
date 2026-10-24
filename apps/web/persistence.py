@@ -8,6 +8,22 @@ from uuid import uuid4
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CODE_LENGTH = 10
 HASH_ITERATIONS = 200_000
+PROFILE_VERSION = 2
+PROFILE_GOALS = {
+    "Strength",
+    "Muscle",
+    "Endurance",
+    "General fitness",
+    "Energy",
+}
+PROFILE_SPLITS = {
+    "Full body",
+    "Upper/Lower",
+    "Push/Pull/Legs",
+    "Body-part split",
+    "Not sure",
+}
+PROFILE_CYCLE_MODES = {"period_date", "unsure", "hormonal_contraception"}
 
 
 def normalize_login_code(code: str) -> str:
@@ -109,61 +125,95 @@ def add_phase_heart(
     hearts,
     account_id: str,
     phase: str,
-    plan_kind: str,
-    week: int,
 ) -> None:
     if phase not in {"Menstrual", "Follicular", "Ovulatory", "Luteal"}:
         raise ValueError("A phase estimate is required to heart a phase-keyed plan.")
-    if plan_kind not in {"workout", "grocery"} or week not in range(1, 5):
-        raise ValueError("Choose a plan and week from the four-week plan.")
     hearts.update_one(
         {
             "account_id": account_id,
             "phase": phase,
-            "plan_kind": plan_kind,
-            "week": week,
         },
         {"$setOnInsert": {"created_at": datetime.now(timezone.utc)}},
         upsert=True,
     )
 
 
-def count_phase_hearts(hearts, account_id: str, phase: str) -> int:
-    return hearts.count_documents({"account_id": account_id, "phase": phase})
+def count_phase_hearts(hearts, account_id: str) -> int:
+    return len(
+        hearts.distinct(
+            "phase",
+            {"account_id": account_id},
+        )
+    )
 
 
-def get_phase_lock(locks, account_id: str, phase: str):
-    return locks.find_one({"account_id": account_id, "phase": phase})
-
-
-def lock_phase_plan(
+def save_phase_workout_plan(
     locks,
     account_id: str,
     phase: str,
-    workout_plan: dict,
-    grocery_items: list[str],
+    workout_plan: list[dict],
 ) -> None:
+    if phase not in {"Menstrual", "Follicular", "Ovulatory", "Luteal"}:
+        raise ValueError("A phase estimate is required to save a phase-keyed plan.")
     locks.update_one(
         {"account_id": account_id, "phase": phase},
         {
-            "$setOnInsert": {
-                "locked_at": datetime.now(timezone.utc),
+            "$set": {
                 "workout_plan": workout_plan,
-                "grocery_items": grocery_items,
-            }
+                "plan_saved_at": datetime.now(timezone.utc),
+            },
+            "$setOnInsert": {"locked_at": None},
         },
         upsert=True,
     )
 
 
+def get_phase_lock(locks, account_id: str, phase: str):
+    return locks.find_one(
+        {"account_id": account_id, "phase": phase, "is_locked": True}
+    )
+
+
+def lock_phase_plan(locks, account_id: str) -> None:
+    locks.update_many(
+        {"account_id": account_id},
+        {
+            "$set": {
+                "is_locked": True,
+                "locked_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+
+
 def stored_profile(profile: dict) -> dict:
+    cycle_mode = profile["cycle_tracking_mode"]
+    goal = profile["goal"]
+    usual_split = profile["usual_split"]
+    workouts_per_week = int(profile["workouts_per_week"])
+    last_period = profile.get("last_period")
+    if cycle_mode not in PROFILE_CYCLE_MODES:
+        raise ValueError("Choose a supported cycle tracking option.")
+    if goal not in PROFILE_GOALS:
+        raise ValueError("Choose a supported workout goal.")
+    if usual_split not in PROFILE_SPLITS:
+        raise ValueError("Choose a supported workout split.")
+    if workouts_per_week not in range(1, 8):
+        raise ValueError("Choose between one and seven workouts per week.")
+    if cycle_mode == "period_date" and not isinstance(last_period, date):
+        raise ValueError("A last period start date is required for cycle estimates.")
+
     return {
-        "cycle_date_unsure": bool(profile["unsure"]),
+        "version": PROFILE_VERSION,
+        "cycle_tracking_mode": cycle_mode,
+        "cycle_date_unsure": cycle_mode != "period_date",
         "last_period_start": (
-            None if profile["unsure"] else profile["last_period"].isoformat()
+            last_period.isoformat()
+            if cycle_mode == "period_date"
+            else None
         ),
-        "cycle_length": profile["cycle_length"],
-        "goal": profile["goal"],
-        "exercises": list(profile["exercises"])[:5],
-        "dietary_preference": profile["diet"],
+        "cycle_length": None,
+        "goal": goal,
+        "workouts_per_week": workouts_per_week,
+        "usual_split": usual_split,
     }

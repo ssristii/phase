@@ -4,8 +4,6 @@ from datetime import date, timedelta
 from phase_engine import (
     build_plan,
     evaluate_safety,
-    grocery_list,
-    grocery_sections,
     predict_cycle,
     validate_exercises,
     weekly_workout_schedule,
@@ -24,7 +22,7 @@ class CycleEngineTests(unittest.TestCase):
         prediction = predict_cycle(date(2026, 10, 23), date(2026, 10, 18))
         self.assertTrue(prediction.population_default)
         self.assertEqual(prediction.confidence, 0.3)
-        self.assertIn("population-default", prediction.reason)
+        self.assertIn("typical cycle timing", prediction.reason)
 
     def test_unsure_mode_makes_no_phase_or_fertile_window_claim(self):
         prediction = predict_cycle(date.today(), None, unsure=True)
@@ -35,7 +33,7 @@ class CycleEngineTests(unittest.TestCase):
     def test_missed_logs_keep_estimate_low_confidence(self):
         prediction = predict_cycle(date(2026, 10, 23), date(2026, 9, 1), 28)
         self.assertEqual(prediction.confidence, 0.45)
-        self.assertIn("low-confidence", prediction.reason)
+        self.assertIn("estimated from your reported period start", prediction.reason)
 
     def test_future_period_date_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -71,7 +69,8 @@ class CycleEngineTests(unittest.TestCase):
         schedule = weekly_workout_schedule(
             "Follicular",
             "Strength",
-            ["Goblet squat", "Dumbbell row"],
+            workouts_per_week=3,
+            usual_split="Full body",
             energy=2,
             sleep_hours=5,
             pain=7,
@@ -79,32 +78,40 @@ class CycleEngineTests(unittest.TestCase):
         )
         self.assertEqual(len(schedule), 7)
         self.assertEqual(sum(item["is_today"] for item in schedule), 1)
-        self.assertEqual(schedule[0]["title"], "Moderate strength practice")
+        self.assertIn("Moderate strength practice", schedule[0]["title"])
         self.assertIn("sleep", schedule[0]["reason"])
-        self.assertEqual(schedule[3]["type"], "rest")
-        walking_only = weekly_workout_schedule(
+        self.assertEqual(
+            sum(item["type"] == "workout" for item in schedule),
+            3,
+        )
+        split_schedule = weekly_workout_schedule(
             "Luteal",
             "Strength",
-            ["Walking"],
+            workouts_per_week=4,
+            usual_split="Upper/Lower",
             energy=3,
             sleep_hours=7,
             pain=0,
             today=date(2026, 10, 19),
         )
-        self.assertNotIn("Walking", walking_only[0]["exercises"])
+        training_items = [item for item in split_schedule if item["type"] == "workout"]
+        self.assertEqual(
+            [item["title"].split(" - ")[0] for item in training_items],
+            ["Upper body", "Lower body", "Upper body", "Lower body"],
+        )
 
-    def test_grocery_list_is_full_and_grouped_for_each_phase(self):
-        for phase in ("Menstrual", "Follicular", "Ovulatory", "Luteal", None):
-            with self.subTest(phase=phase):
-                sections = grocery_sections(phase)
-                items = grocery_list(phase, "Vegan")
-                self.assertEqual(len(sections), 5)
-                self.assertGreaterEqual(len(items), 20)
-                self.assertEqual(len(items), len(set(items)))
-        gluten_free_items = grocery_list(None, "Gluten-free")
-        self.assertIn("Certified gluten-free oats", gluten_free_items)
-        self.assertIn("Gluten-free bread", gluten_free_items)
-        self.assertNotIn("Whole-grain bread", gluten_free_items)
+    def test_weekly_schedule_rejects_invalid_frequency(self):
+        with self.assertRaises(ValueError):
+            weekly_workout_schedule(
+                phase=None,
+                goal="Energy",
+                workouts_per_week=0,
+                usual_split="Not sure",
+                energy=3,
+                sleep_hours=7,
+                pain=0,
+                today=date(2026, 10, 19),
+            )
 
 
 if __name__ == "__main__":

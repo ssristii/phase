@@ -20,15 +20,13 @@ from persistence import (
     get_phase_lock,
     lock_phase_plan,
     save_checkin,
+    save_phase_workout_plan,
     stored_profile,
+    PROFILE_VERSION,
 )
 from phase_engine import (
-    EXERCISE_CATALOG,
     evaluate_safety,
-    grocery_list,
-    grocery_sections,
     predict_cycle,
-    validate_exercises,
     weekly_workout_schedule,
 )
 
@@ -36,10 +34,26 @@ from phase_engine import (
 load_dotenv(Path(__file__).with_name(".env"))
 TODAY = date.today()
 PHASES = ("Menstrual", "Follicular", "Ovulatory", "Luteal")
-GOALS = ("Strength", "General fitness", "Energy")
-DIETS = ("No preference", "Vegetarian", "Vegan", "Gluten-free")
+GOALS = ("Strength", "Muscle", "Endurance", "General fitness", "Energy")
+WORKOUT_SPLITS = (
+    "Full body",
+    "Upper/Lower",
+    "Push/Pull/Legs",
+    "Body-part split",
+    "Not sure",
+)
+TRACKING_MODES = (
+    "I know my last period start",
+    "I'm not sure",
+    "On hormonal contraception",
+)
 FLOWS = ("None", "Spotting", "Light", "Moderate", "Heavy", "Very heavy")
 MOODS = ("Low", "Okay", "Good", "Anxious", "Irritable")
+TRACKING_MODE_VALUES = {
+    TRACKING_MODES[0]: "period_date",
+    TRACKING_MODES[1]: "unsure",
+    TRACKING_MODES[2]: "hormonal_contraception",
+}
 CHECKIN_INPUT_KEYS = (
     "checkin-flow",
     "checkin-mood",
@@ -380,13 +394,8 @@ def connect_database(uri: str, database_name: str):
     database.checkins.create_index(
         [("account_id", 1), ("checkin_date", 1)], unique=True
     )
-    database.hearts.create_index(
-        [
-            ("account_id", 1),
-            ("phase", 1),
-            ("plan_kind", 1),
-            ("week", 1),
-        ],
+    database.phase_hearts.create_index(
+        [("account_id", 1), ("phase", 1)],
         unique=True,
     )
     database.phase_locks.create_index(
@@ -398,7 +407,6 @@ def connect_database(uri: str, database_name: str):
 def show_auth_page() -> None:
     st.title("Phase")
     st.write("A cycle-aware plan that starts with how you feel today.")
-    st.caption("Informational, not a diagnosis.")
     st.subheader("Your account")
     st.write(
         "No email, phone number, or password. Phase creates a private 10-character "
@@ -434,8 +442,12 @@ def show_auth_page() -> None:
                     )
                 else:
                     st.session_state["account_id"] = account["_id"]
+                    profile = account.get("profile")
                     st.session_state["flow_step"] = (
-                        "profile" if account.get("profile") is None else "checkin"
+                        "profile"
+                        if not isinstance(profile, dict)
+                        or profile.get("version") != PROFILE_VERSION
+                        else "checkin"
                     )
                     st.rerun()
 
@@ -487,83 +499,63 @@ def show_recovery_code() -> None:
 
 def show_profile_setup(account) -> None:
     st.title("Set up your profile")
-    st.write("These details personalize your estimates and weekly plans.")
+    st.write("These details shape your cycle estimate and training plan.")
     with st.form("profile-setup-form"):
-        unsure = st.checkbox("I am unsure of my last period start")
-        last_period = st.date_input(
-            "Last period start",
-            value=TODAY,
-            disabled=unsure,
-            help="If you are unsure, choose that option to avoid phase claims.",
+        cycle_tracking_choice = st.selectbox(
+            "Cycle tracking",
+            TRACKING_MODES,
         )
-        date_confirmed = st.checkbox(
-            "I confirmed this is the correct date",
-            disabled=unsure,
-        )
-        knows_cycle_length = st.checkbox("I know my typical cycle length")
-        cycle_length = None
-        if knows_cycle_length:
-            cycle_length = st.number_input(
-                "Typical cycle length in days",
-                min_value=21,
-                max_value=35,
-                value=28,
+        last_period = None
+        date_confirmed = True
+        if cycle_tracking_choice == TRACKING_MODES[0]:
+            last_period = st.date_input(
+                "Last period start",
+                value=TODAY,
             )
-        goal = st.selectbox("Your goal", GOALS)
-        exercise_text = st.text_area(
-            "Exercises you currently do (up to 5)",
-            placeholder="Enter up to five exercises, separated by commas or new lines",
-            help="Plans use supported exercises only. Unknown entries are flagged before saving.",
+            date_confirmed = st.checkbox("I confirmed this is the correct date")
+        workouts_per_week = st.slider(
+            "Workouts per week",
+            min_value=1,
+            max_value=7,
+            value=3,
         )
-        diet = st.selectbox("Dietary preference", DIETS)
+        usual_split = st.selectbox("Usual training split", WORKOUT_SPLITS)
+        goal = st.selectbox("Your goal", GOALS)
         submitted = st.form_submit_button("Save profile and continue")
-    with st.expander("Supported exercises"):
-        st.write(", ".join(EXERCISE_CATALOG))
 
     if submitted:
-        if not unsure and not date_confirmed:
-            st.error("Confirm your last period date, or choose that you are unsure.")
-        elif not unsure and last_period > TODAY:
+        cycle_tracking_mode = TRACKING_MODE_VALUES[cycle_tracking_choice]
+        if cycle_tracking_mode == "period_date" and not date_confirmed:
+            st.error("Confirm your last period date, or choose symptom-based mode.")
+        elif last_period is not None and last_period > TODAY:
             st.error("Last period start cannot be in the future.")
         else:
-            exercises, unsupported = validate_exercises(exercise_text)
-            if unsupported:
-                st.error(
-                    "These exercises are not in the supported list: "
-                    + ", ".join(unsupported)
-                )
-            elif len(exercises) > 5:
-                st.error("Choose no more than five supported exercises.")
-            else:
-                profile = stored_profile(
+            profile = stored_profile(
+                {
+                    "cycle_tracking_mode": cycle_tracking_mode,
+                    "last_period": last_period,
+                    "workouts_per_week": workouts_per_week,
+                    "usual_split": usual_split,
+                    "goal": goal,
+                }
+            )
+            try:
+                database.accounts.update_one(
+                    {"_id": account["_id"]},
                     {
-                        "unsure": unsure,
-                        "last_period": last_period,
-                        "cycle_length": (
-                            int(cycle_length) if cycle_length is not None else None
-                        ),
-                        "goal": goal,
-                        "exercises": exercises,
-                        "diet": diet,
-                    }
+                        "$set": {
+                            "profile": profile,
+                            "updated_at": datetime.now(timezone.utc),
+                        }
+                    },
                 )
-                try:
-                    database.accounts.update_one(
-                        {"_id": account["_id"]},
-                        {
-                            "$set": {
-                                "profile": profile,
-                                "updated_at": datetime.now(timezone.utc),
-                            }
-                        },
-                    )
-                except PyMongoError:
-                    st.error(
-                        "Could not save your profile to MongoDB. Please try again."
-                    )
-                    st.stop()
-                st.session_state["flow_step"] = "checkin"
-                st.rerun()
+            except PyMongoError:
+                st.error(
+                    "Could not save your profile to MongoDB. Please try again."
+                )
+                st.stop()
+            st.session_state["flow_step"] = "checkin"
+            st.rerun()
 
 
 def show_voice_checkin() -> None:
@@ -574,6 +566,17 @@ def show_voice_checkin() -> None:
         clear_voice_text()
 
     with st.expander("Voice check-in (record, then upload)", expanded=True):
+        transcript_heading, clear_transcript = st.columns(
+            (3, 1),
+            vertical_alignment="center",
+        )
+        transcript_heading.markdown("#### Transcript")
+        if clear_transcript.button("Clear", key="clear-voice-text-always"):
+            st.session_state["_clear_voice_text"] = True
+            st.session_state["_clear_voice_capture"] = True
+            st.rerun()
+        if "voice_transcript" not in st.session_state:
+            st.caption("Your transcript appears after the recording is sent.")
         st.write(
             "Record up to 60 seconds. Say how your flow, mood, energy, sleep, "
             "pain, and workout are going."
@@ -670,8 +673,7 @@ def show_voice_checkin() -> None:
                 "Remove your name or identifying details before extraction. "
                 "The transcript is temporary and is not saved to your account."
             )
-            extract_col, clear_col = st.columns(2)
-            if extract_col.button(
+            if st.button(
                 "Extract check-in values",
                 key="extract-voice-fields",
             ):
@@ -730,9 +732,6 @@ def show_voice_checkin() -> None:
                         )
                     except (json.JSONDecodeError, ValueError) as error:
                         st.error(f"Could not use the extracted values: {error}")
-            if clear_col.button("Clear voice text", key="clear-voice-text"):
-                st.session_state["_clear_voice_text"] = True
-                st.rerun()
 
 
 def show_daily_checkin(account) -> None:
@@ -740,7 +739,6 @@ def show_daily_checkin(account) -> None:
     st.write(
         "Your check-in leads. Cycle phase is only a starting estimate."
     )
-    st.caption("Informational, not a diagnosis.")
     try:
         existing = get_checkin(database.checkins, account["_id"], TODAY) or {}
     except PyMongoError:
@@ -755,15 +753,8 @@ def show_daily_checkin(account) -> None:
     if suggested_mood not in MOODS:
         suggested_mood = existing.get("mood", "Okay")
     if "voice_extracted" in st.session_state:
-        confidence = suggested.get("confidence")
         st.info(
-            "Voice suggestions are not a diagnosis. Review and correct every "
-            "field before continuing."
-            + (
-                f" Extraction confidence: {confidence:.0%}."
-                if isinstance(confidence, (int, float))
-                else ""
-            )
+            "Review and correct every voice suggestion before continuing."
         )
 
     initial_values = {
@@ -976,24 +967,19 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
             st.rerun()
 
     st.title("Your Phase dashboard")
-    st.caption("Your reported state leads. Phase is a starting prior.")
-    st.caption("Informational, not a diagnosis.")
+    st.caption("Your reported state leads today's plan.")
     weekly_schedule = None
-    current_groceries = None
     locked_plan = None
     if not safety.suppress_plan:
         weekly_schedule = weekly_workout_schedule(
             phase=prediction.phase,
             goal=profile["goal"],
-            exercises=profile.get("exercises", []),
+            workouts_per_week=profile["workouts_per_week"],
+            usual_split=profile["usual_split"],
             energy=checkin["energy"],
             sleep_hours=checkin["sleep_hours"],
             pain=checkin["pain"],
             today=TODAY,
-        )
-        current_groceries = grocery_list(
-            prediction.phase,
-            profile["dietary_preference"],
         )
         if prediction.phase:
             locked_plan = get_phase_lock(
@@ -1002,30 +988,22 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 prediction.phase,
             )
 
-    today_tab, workout_tab, grocery_tab, how_tab = st.tabs(
-        ("Today", "Workout", "Groceries", "How this works")
+    today_tab, workout_tab, meals_tab, help_tab, report_tab = st.tabs(
+        ("Today", "Train", "Meals", "What might help", "Report")
     )
 
     with today_tab:
         with st.container(border=True):
             st.subheader("Where you are")
-            phase_wheel(prediction.phase)
             if prediction.phase is None:
+                st.caption("Cycle timing is hidden in symptom-based mode.")
                 st.info(prediction.reason)
             else:
+                phase_wheel(prediction.phase)
                 st.subheader(f"Estimated phase: {prediction.phase}")
-                st.write(f"Confidence: {prediction.confidence:.0%}")
                 if prediction.population_default:
-                    st.info(
-                        "Cold start: using a population-default 28-day cycle estimate."
-                    )
+                    st.caption("Estimated from typical cycles.")
                 st.write(prediction.reason)
-                if prediction.fertile_window:
-                    start_day, end_day = prediction.fertile_window
-                    st.caption(
-                        f"Estimated fertile window: cycle days {start_day} to "
-                        f"{end_day}; confidence is low. This is not contraception."
-                    )
         with st.container(border=True):
             st.markdown("#### Today's check-in")
             st.write(
@@ -1046,9 +1024,9 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         )
 
     with workout_tab:
-        st.subheader("Your week of movement")
+        st.subheader("Your training week")
         if safety.suppress_plan:
-            st.info("A workout plan is not shown while a safety trigger is active.")
+            st.info("A training plan is not shown while an escalation is active.")
         else:
             display_schedule = (
                 locked_plan.get("workout_plan")
@@ -1058,9 +1036,10 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
             if not isinstance(display_schedule, list):
                 display_schedule = weekly_schedule
             if locked_plan:
-                st.success(
-                    f"Your {prediction.phase}-keyed four-week workout plan is locked."
-                )
+                st.success(f"Your {prediction.phase}-keyed plan is locked.")
+            st.caption(
+                "Template schedule. Gemini-generated plans are not connected yet."
+            )
             for item in display_schedule:
                 with st.container(border=True):
                     heading = f"{item['day']} - {item['title']}"
@@ -1077,126 +1056,44 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                     st.caption(f"Why this fits: {item['reason']}")
             if prediction.phase:
                 if not locked_plan:
-                    week = st.selectbox(
-                        "Week to save",
-                        (1, 2, 3, 4),
-                        key="workout-heart-week",
-                    )
                     if st.button("Heart this workout", key="heart-workout"):
                         add_phase_heart(
-                            database.hearts,
+                            database.phase_hearts,
                             account["_id"],
                             prediction.phase,
-                            "workout",
-                            week,
+                        )
+                        save_phase_workout_plan(
+                            database.phase_locks,
+                            account["_id"],
+                            prediction.phase,
+                            weekly_schedule,
                         )
                         st.rerun()
                     total_hearts = count_phase_hearts(
-                        database.hearts,
+                        database.phase_hearts,
                         account["_id"],
-                        prediction.phase,
                     )
                     st.caption(
-                        f"{total_hearts} of 4 hearts saved for this phase."
+                        f"{total_hearts} of 4 phase hearts saved."
                     )
                     if total_hearts >= 4 and st.button(
                         "Lock my 4-week plan",
                         key="lock-workout-plan",
                     ):
-                        lock_phase_plan(
-                            database.phase_locks,
-                            account["_id"],
-                            prediction.phase,
-                            weekly_schedule,
-                            current_groceries,
-                        )
+                        lock_phase_plan(database.phase_locks, account["_id"])
                         st.rerun()
 
-    with grocery_tab:
-        st.subheader("This week's grocery list")
-        if safety.suppress_plan:
-            st.info("A grocery plan is not shown while a safety trigger is active.")
-        else:
-            items_to_show = (
-                locked_plan.get("grocery_items")
-                if locked_plan
-                else current_groceries
-            )
-            if locked_plan:
-                st.success(
-                    f"The {prediction.phase}-keyed grocery list is included in "
-                    "your four-week lock."
-                )
-            sections = grocery_sections(
-                prediction.phase,
-                profile["dietary_preference"],
-            )
-            for section, section_items in sections.items():
-                visible_items = [
-                    item for item in section_items if item in items_to_show
-                ]
-                if visible_items:
-                    st.markdown(f"#### {section}")
-                    for item in visible_items:
-                        st.checkbox(
-                            item,
-                            key=f"grocery-{account['_id']}-{TODAY}-{item}",
-                        )
-            st.caption("No calories, macros, or weight-loss targets.")
-            if prediction.phase:
-                if not locked_plan:
-                    week = st.selectbox(
-                        "Week to save",
-                        (1, 2, 3, 4),
-                        key="grocery-heart-week",
-                    )
-                    if st.button("Heart this grocery list", key="heart-grocery"):
-                        add_phase_heart(
-                            database.hearts,
-                            account["_id"],
-                            prediction.phase,
-                            "grocery",
-                            week,
-                        )
-                        st.rerun()
-                    total_hearts = count_phase_hearts(
-                        database.hearts,
-                        account["_id"],
-                        prediction.phase,
-                    )
-                    st.caption(
-                        f"{total_hearts} of 4 hearts saved for this phase."
-                    )
-                    if total_hearts >= 4 and st.button(
-                        "Lock my 4-week plan",
-                        key="lock-grocery-plan",
-                    ):
-                        plan = build_plan(
-                            phase=prediction.phase,
-                            goal=profile["goal"],
-                            exercises=profile.get("exercises", []),
-                            energy=checkin["energy"],
-                            sleep_hours=checkin["sleep_hours"],
-                            pain=checkin["pain"],
-                        )
-                        lock_phase_plan(
-                            database.phase_locks,
-                            account["_id"],
-                            prediction.phase,
-                            weekly_schedule,
-                            current_groceries,
-                        )
-                        st.rerun()
+    with meals_tab:
+        st.subheader("Today's meal prep idea")
+        st.info("AI meal ideas are not connected yet.")
 
-    with how_tab:
-        st.subheader("How this works")
-        st.write(
-            "Phase-based training evidence is limited. Your phase estimate is "
-            "only a starting prior; your reported sleep, pain, energy, and "
-            "symptoms lead. Phase estimates are not a contraceptive method."
-        )
-        st.caption("Informational, not a diagnosis.")
-        st.caption("Your sign-in code is stored as a salted hash. Audio is not saved.")
+    with help_tab:
+        st.subheader("What might help")
+        st.info("Sourced, phase-aware guidance is not connected yet.")
+
+    with report_tab:
+        st.subheader("Appointment report")
+        st.info("Cycle and check-in statistics are not available yet.")
 
 
 if "pending_login_code" in st.session_state:
@@ -1239,7 +1136,11 @@ if account is None:
     st.stop()
 
 profile = account.get("profile")
-if profile is None or st.session_state.get("flow_step") == "profile":
+if (
+    not isinstance(profile, dict)
+    or profile.get("version") != PROFILE_VERSION
+    or st.session_state.get("flow_step") == "profile"
+):
     show_profile_setup(account)
     st.stop()
 

@@ -6,18 +6,22 @@ CREATE TABLE IF NOT EXISTS accounts (
   login_code_hash TEXT NOT NULL,
   age INTEGER NOT NULL CHECK (age >= 18),
   last_period_start TEXT,
-  cycle_date_unsure INTEGER NOT NULL DEFAULT 0 CHECK (cycle_date_unsure IN (0, 1)),
-  goal TEXT NOT NULL CHECK (goal IN ('strength', 'general_fitness', 'energy')),
-  dietary_preference TEXT NOT NULL DEFAULT 'none',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS selected_exercises (
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  exercise_id TEXT NOT NULL,
-  position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 4),
-  PRIMARY KEY (account_id, exercise_id),
-  UNIQUE (account_id, position)
+  cycle_tracking_mode TEXT NOT NULL CHECK (
+    cycle_tracking_mode IN ('period_date', 'unsure', 'hormonal_contraception')
+  ),
+  workouts_per_week INTEGER NOT NULL CHECK (workouts_per_week BETWEEN 1 AND 7),
+  usual_split TEXT NOT NULL CHECK (
+    usual_split IN ('Full body', 'Upper/Lower', 'Push/Pull/Legs', 'Body-part split', 'Not sure')
+  ),
+  goal TEXT NOT NULL CHECK (
+    goal IN ('Strength', 'Muscle', 'Endurance', 'General fitness', 'Energy')
+  ),
+  profile_version INTEGER NOT NULL DEFAULT 2,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (
+    (cycle_tracking_mode = 'period_date' AND last_period_start IS NOT NULL)
+    OR (cycle_tracking_mode != 'period_date' AND last_period_start IS NULL)
+  )
 );
 
 CREATE TABLE IF NOT EXISTS period_starts (
@@ -41,17 +45,17 @@ CREATE TABLE IF NOT EXISTS daily_checkins (
 
 CREATE TABLE IF NOT EXISTS plan_hearts (
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  plan_kind TEXT NOT NULL CHECK (plan_kind IN ('workout', 'grocery')),
   phase TEXT NOT NULL CHECK (phase IN ('menstrual', 'follicular', 'ovulatory', 'luteal')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (account_id, plan_kind, phase)
+  PRIMARY KEY (account_id, phase)
 );
 
 CREATE TABLE IF NOT EXISTS phase_plan_locks (
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   phase TEXT NOT NULL CHECK (phase IN ('menstrual', 'follicular', 'ovulatory', 'luteal')),
   workout_plan_json TEXT NOT NULL,
-  grocery_plan_json TEXT NOT NULL,
-  locked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  is_locked INTEGER NOT NULL DEFAULT 0 CHECK (is_locked IN (0, 1)),
+  plan_saved_at TEXT,
+  locked_at TEXT,
   PRIMARY KEY (account_id, phase)
 );

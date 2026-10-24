@@ -251,7 +251,6 @@ export default function VoiceSmokeTest() {
       </View>
       {busy && <ActivityIndicator color="#9B1B30" />}
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-      <Text style={styles.footer}>Informational, not a diagnosis.</Text>
     </ScrollView>
   );
 }
@@ -374,11 +373,5 @@ const styles = StyleSheet.create({
     color: "#8A1022",
     fontSize: 14,
     fontWeight: "600",
-  },
-  footer: {
-    alignSelf: "center",
-    color: "#5A0F1C",
-    fontSize: 12,
-    marginTop: 4,
   },
 });
