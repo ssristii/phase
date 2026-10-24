@@ -77,10 +77,34 @@ st.set_page_config(page_title="Phase", page_icon=None, layout="centered")
 st.markdown(
     """
     <style>
-    :root { color-scheme: light; }
-    .stApp, [data-testid="stAppViewContainer"], [data-testid="stSidebar"] {
-        background: #F3E9D2;
-        color: #2A1A14 !important;
+    :root {
+        color-scheme: light;
+        --cherry: #8B1E26;
+        --crimson: #B22222;
+        --gold: #D4AF37;
+        --champagne: #F3E5AB;
+        --parchment: #F7F2E7;
+        --mahogany: #2B1B17;
+        --espresso: #1C1311;
+        --taupe: #6E5B54;
+    }
+    .stApp, [data-testid="stAppViewContainer"] {
+        background:
+            radial-gradient(ellipse at 50% 0%, rgba(243, 229, 171, 0.52), transparent 58%),
+            radial-gradient(ellipse at 50% 100%, rgba(110, 91, 84, 0.10), transparent 62%),
+            var(--parchment);
+        color: var(--espresso) !important;
+    }
+    [data-testid="stHeader"], [data-testid="stToolbar"] {
+        background: var(--parchment) !important;
+        color: var(--espresso) !important;
+    }
+    [data-testid="stHeader"] button {
+        color: var(--cherry) !important;
+    }
+    [data-testid="stSidebar"] {
+        background: linear-gradient(160deg, #F3E5AB, var(--parchment) 55%, #E8DDC9);
+        border-right: 1px solid rgba(139, 30, 38, 0.22);
     }
     .stApp, .stApp p, .stApp label, .stApp li,
     .stApp [data-testid="stMarkdownContainer"],
@@ -88,92 +112,194 @@ st.markdown(
     .stApp [data-testid="stCaptionContainer"],
     [data-testid="stSidebar"] p,
     [data-testid="stSidebar"] label {
-        color: #2A1A14 !important;
-        font-size: 1.05rem;
+        color: var(--espresso) !important;
+        font-family: "Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        font-size: 1.13rem;
         line-height: 1.55;
     }
-    h1, h2, h3 {
-        color: #5A0F1C !important;
-        font-family: Georgia, serif;
-        letter-spacing: 0.01em;
+    h1, h2, h3, h4 {
+        color: var(--cherry) !important;
+        font-family: "Playfair Display", "Iowan Old Style", "Palatino Linotype", Georgia, serif !important;
+        letter-spacing: 0.015em;
     }
-    h1 { font-size: 3rem !important; }
+    h1 { font-size: 2.7rem !important; }
     h2 { font-size: 2.15rem !important; }
     h3 { font-size: 1.65rem !important; }
-    [data-testid="stWidgetLabel"] p { font-weight: 650 !important; }
-    [data-testid="stCaptionContainer"] p { font-size: 0.96rem !important; }
+    [data-testid="stWidgetLabel"] p { font-weight: 700 !important; }
+    [data-testid="stCaptionContainer"] p {
+        color: var(--taupe) !important;
+        font-size: 1rem !important;
+    }
+    .phase-brand {
+        position: relative;
+        margin: 0.35rem 0 2rem;
+        padding: 1rem 1.4rem 0.9rem;
+        text-align: center;
+        border: 3px double var(--gold);
+        outline: 1px solid rgba(212, 175, 55, 0.38);
+        outline-offset: 4px;
+        background: rgba(247, 242, 231, 0.7);
+        box-shadow: 0 8px 22px rgba(43, 27, 23, 0.09);
+    }
+    .phase-brand-title {
+        color: var(--cherry);
+        font-family: "Playfair Display", "Iowan Old Style", Georgia, serif;
+        font-size: clamp(2.1rem, 8vw, 3.2rem);
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        line-height: 1.15;
+    }
+    .phase-brand-subtitle {
+        margin-top: 0.2rem;
+        color: var(--taupe);
+        font-family: "Cormorant Garamond", "Palatino Linotype", Georgia, serif;
+        font-size: 1.08rem;
+        font-style: italic;
+        letter-spacing: 0.035em;
+    }
+    .phase-brand-divider {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        width: min(21rem, 85%);
+        margin: 0.45rem auto 0;
+        color: var(--gold);
+        font-size: 0.9rem;
+    }
+    .phase-brand-divider::before, .phase-brand-divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: linear-gradient(145deg, #38231D, var(--mahogany) 60%, #241612);
+        border: 1px solid var(--gold) !important;
+        border-radius: 1.15rem !important;
+        box-shadow: 0 10px 25px rgba(43, 27, 23, 0.17), inset 0 1px rgba(243, 229, 171, 0.08);
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] p,
+    [data-testid="stVerticalBlockBorderWrapper"] li,
+    [data-testid="stVerticalBlockBorderWrapper"] label,
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"],
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stWidgetLabel"] {
+        color: var(--parchment) !important;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] h1,
+    [data-testid="stVerticalBlockBorderWrapper"] h2,
+    [data-testid="stVerticalBlockBorderWrapper"] h3,
+    [data-testid="stVerticalBlockBorderWrapper"] h4 {
+        color: var(--champagne) !important;
+    }
     [data-testid="stAlert"] {
-        border: 1px solid #9B1B30;
-        border-radius: 16px;
+        border: 1px solid var(--gold);
+        border-radius: 1rem;
+        background: rgba(243, 229, 171, 0.44);
     }
     [data-testid="stAlert"] p,
     [data-testid="stAlert"] [data-testid="stMarkdownContainer"] {
-        color: #2A1A14 !important;
+        color: var(--espresso) !important;
     }
-    div.stButton > button, div.stFormSubmitButton > button {
-        background: #9B1B30 !important;
-        color: #F3E9D2 !important;
-        border: 1px solid #C9A24B;
-        border-radius: 999px;
-        min-height: 3rem;
-        padding: 0.65rem 1.3rem;
-        font-size: 1.02rem;
-        font-weight: 650;
-        box-shadow: 0 4px 12px rgba(42, 26, 20, 0.16);
-        transition: transform 120ms ease, box-shadow 120ms ease;
+    div.stButton > button, div.stFormSubmitButton > button,
+    [data-testid="stAudioInput"] button {
+        position: relative;
+        overflow: hidden;
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0) 48%),
+            linear-gradient(180deg, var(--crimson) 0%, var(--cherry) 100%) !important;
+        color: var(--parchment) !important;
+        border: 2px solid var(--gold) !important;
+        border-radius: 999px !important;
+        min-height: 3.15rem;
+        padding: 0.68rem 1.45rem;
+        font-family: "Cormorant Garamond", "Palatino Linotype", Georgia, serif;
+        font-size: 1.13rem;
+        font-weight: 700;
+        box-shadow: 0 8px 16px -2px rgba(43, 27, 23, 0.35), inset 0 -3px 6px rgba(0, 0, 0, 0.4);
+        transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
     }
-    div.stButton > button:hover, div.stFormSubmitButton > button:hover {
-        background: #5A0F1C !important;
-        color: #F3E9D2 !important;
-        border-color: #C9A24B;
-        transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(42, 26, 20, 0.22);
+    div.stButton > button::after, div.stFormSubmitButton > button::after {
+        content: "";
+        position: absolute;
+        top: -60%;
+        left: -35%;
+        width: 34%;
+        height: 220%;
+        transform: rotate(28deg);
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+        transition: left 450ms ease;
+        pointer-events: none;
+    }
+    div.stButton > button:hover::after,
+    div.stFormSubmitButton > button:hover::after { left: 115%; }
+    div.stButton > button:hover, div.stFormSubmitButton > button:hover,
+    [data-testid="stAudioInput"] button:hover {
+        color: #FFFFFF !important;
+        border-color: var(--champagne) !important;
+        filter: brightness(1.08);
+        transform: translateY(-2px);
+        box-shadow: 0 11px 20px -2px rgba(43, 27, 23, 0.38), inset 0 -3px 6px rgba(0, 0, 0, 0.35);
+    }
+    div.stButton > button:active, div.stFormSubmitButton > button:active,
+    [data-testid="stAudioInput"] button:active {
+        transform: scale(0.96) translateY(2px);
+        box-shadow: 0 3px 7px rgba(43, 27, 23, 0.3), inset 0 -2px 5px rgba(0, 0, 0, 0.42);
     }
     [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
-        width: 30px !important;
-        height: 30px !important;
-        background: #9B1B30 !important;
-        border: 3px solid #C9A24B !important;
+        width: 32px !important;
+        height: 32px !important;
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.46), transparent 48%),
+            linear-gradient(180deg, var(--crimson), var(--cherry)) !important;
+        border: 3px solid var(--gold) !important;
         border-radius: 50% !important;
-        box-shadow: 0 3px 9px rgba(42, 26, 20, 0.25) !important;
+        box-shadow: 0 5px 12px rgba(43, 27, 23, 0.35), inset 0 -2px 4px rgba(0, 0, 0, 0.3) !important;
+        transition: transform 120ms ease, box-shadow 120ms ease;
+    }
+    [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"]:active {
+        transform: scale(1.13);
+        box-shadow: 0 2px 6px rgba(43, 27, 23, 0.3), inset 0 -2px 4px rgba(0, 0, 0, 0.35) !important;
     }
     [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"]:focus {
-        outline: 3px solid #C9A24B !important;
+        outline: 3px solid var(--gold) !important;
         outline-offset: 3px !important;
     }
     [data-baseweb="select"] > div,
     [data-baseweb="input"] > div,
     [data-testid="stNumberInput"] input,
     [data-testid="stDateInput"] input,
-    [data-testid="stTextArea"] textarea {
-        background: #FFF9EE !important;
-        color: #2A1A14 !important;
-        -webkit-text-fill-color: #2A1A14 !important;
-        caret-color: #9B1B30 !important;
-        border-color: #9B1B30 !important;
-        border-radius: 12px !important;
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stTextInput"] input {
+        background: #FFFCF5 !important;
+        color: var(--espresso) !important;
+        -webkit-text-fill-color: var(--espresso) !important;
+        caret-color: var(--cherry) !important;
+        border-color: rgba(139, 30, 38, 0.65) !important;
+        border-radius: 0.8rem !important;
     }
-    input, textarea {
-        color: #2A1A14 !important;
-        -webkit-text-fill-color: #2A1A14 !important;
-    }
+    input, textarea { color: var(--espresso) !important; -webkit-text-fill-color: var(--espresso) !important; }
     [data-testid="stNumberInput"] button {
-        color: #F3E9D2 !important;
-        background: #9B1B30 !important;
-        border: 1px solid #C9A24B !important;
+        color: var(--parchment) !important;
+        background: linear-gradient(180deg, var(--crimson), var(--cherry)) !important;
+        border: 1px solid var(--gold) !important;
         border-radius: 999px !important;
     }
-    [data-testid="stAudioInput"] button {
-        border-radius: 999px !important;
-        border: 2px solid #C9A24B !important;
-        color: #F3E9D2 !important;
-        background: #9B1B30 !important;
+    [data-testid="stAudioInput"] button { min-height: 2.7rem; }
+    [data-testid="stTabs"] [role="tab"] {
+        color: var(--taupe) !important;
+        font-family: "Cormorant Garamond", "Palatino Linotype", Georgia, serif;
+        font-size: 1.13rem;
+    }
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+        color: var(--cherry) !important;
+        border-bottom-color: var(--gold) !important;
+        font-weight: 750;
     }
     [data-testid="stCode"] pre {
-        background: #FFF9EE !important;
-        color: #5A0F1C !important;
-        border: 2px solid #C9A24B !important;
-        border-radius: 16px !important;
+        background: #FFFCF5 !important;
+        color: var(--cherry) !important;
+        border: 2px solid var(--gold) !important;
+        border-radius: 1rem !important;
         font-size: 1.5rem !important;
         font-weight: 750 !important;
         letter-spacing: 0.14em !important;
@@ -181,31 +307,33 @@ st.markdown(
         padding: 1rem !important;
     }
     .phase-wheel {
-        width: 220px;
-        height: 220px;
+        width: min(220px, 70vw);
+        aspect-ratio: 1;
         margin: 1rem auto 1.5rem;
         border-radius: 50%;
         display: grid;
         place-items: center;
-        box-shadow: 0 8px 22px rgba(42, 26, 20, 0.18);
+        box-shadow: 0 8px 22px rgba(43, 27, 23, 0.23), 0 0 0 5px rgba(212, 175, 55, 0.24);
     }
     .phase-wheel-center {
-        width: 126px;
-        height: 126px;
+        width: 58%;
+        height: 58%;
         border-radius: 50%;
-        background: #F3E9D2;
-        border: 2px solid #C9A24B;
+        background: radial-gradient(circle at 35% 25%, #FFFCF5, var(--parchment) 72%);
+        border: 2px solid var(--gold);
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        color: #5A0F1C;
+        color: var(--cherry);
         text-align: center;
+        font-family: "Playfair Display", "Palatino Linotype", Georgia, serif;
         font-weight: 700;
         line-height: 1.25;
     }
     .phase-wheel-center small {
-        color: #2A1A14;
+        color: var(--taupe);
+        font-family: "Cormorant Garamond", "Palatino Linotype", Georgia, serif;
         font-size: 0.78rem;
         font-weight: 500;
     }
@@ -215,11 +343,30 @@ st.markdown(
         gap: 0.45rem 0.8rem;
         max-width: 390px;
         margin: 0 auto;
-        color: #2A1A14;
-        font-size: 0.98rem;
+        color: var(--espresso);
+        font-size: 1.05rem;
     }
-    .phase-legend span.active { color: #9B1B30; font-weight: 750; }
+    .phase-legend span.active { color: var(--cherry); font-weight: 750; }
+    @media (max-width: 480px) {
+        h1 { font-size: 2.25rem !important; }
+        h2 { font-size: 1.8rem !important; }
+        .phase-brand { margin-bottom: 1.4rem; padding-inline: 0.8rem; }
+        div.stButton > button, div.stFormSubmitButton > button {
+            min-height: 3rem;
+            padding-inline: 1.05rem;
+        }
+    }
     </style>
+    """,
+    unsafe_allow_html=True,
+)
+st.markdown(
+    """
+    <div class="phase-brand" aria-label="Phase, a cycle-aware wellness guide">
+      <div class="phase-brand-title">PHASE</div>
+      <div class="phase-brand-divider"><span>◇</span></div>
+      <div class="phase-brand-subtitle">A cycle-aware guide, led by how you feel</div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
