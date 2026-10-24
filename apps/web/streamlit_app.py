@@ -696,7 +696,7 @@ def show_auth_page() -> None:
                             age,
                         )
                     except PyMongoError:
-                        st.error("Account storage is unavailable. Please try again later.")
+                        st.error("Account service is unavailable. Please try again later.")
                     else:
                         st.session_state["pending_login_code"] = login_code
                         st.session_state["account_id"] = account_id
@@ -776,7 +776,7 @@ def show_profile_setup(account) -> None:
                 )
             except PyMongoError:
                 st.error(
-                    "Could not save your profile to MongoDB. Please try again."
+                    "Could not save your profile. Please try again."
                 )
                 st.stop()
             st.session_state["flow_step"] = "checkin"
@@ -795,7 +795,7 @@ def show_voice_checkin() -> None:
         )
         st.caption(
             "This is record-then-upload, not live transcription. Audio is sent "
-            "to the local Phase API and is not saved in MongoDB. If microphone "
+            "to the local Phase API. If microphone "
             "recording fails, upload an audio file or use the tap form below."
         )
         with st.container(border=True, key="card_voice_transcript"):
@@ -1018,7 +1018,7 @@ def show_daily_checkin(account) -> None:
     try:
         existing = get_checkin(database.checkins, account["_id"], TODAY) or {}
     except PyMongoError:
-        st.error("Could not load today's check-in from MongoDB. Please reload.")
+        st.error("Could not load today's check-in. Please reload.")
         st.stop()
     show_voice_checkin()
     suggested = st.session_state.get("voice_extracted", {})
@@ -1154,7 +1154,7 @@ def show_daily_checkin(account) -> None:
             save_checkin(database.checkins, account["_id"], values, TODAY)
         except PyMongoError:
             st.error(
-                "Could not save today's check-in to MongoDB. "
+                "Could not save today's check-in. "
                 "Your answers were not saved; please try again."
             )
             st.stop()
@@ -1495,8 +1495,6 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         stats = compute_cycle_stats(checkins, today=TODAY)
         with st.container(border=True):
             st.markdown("### Cadence summary")
-            if True:
-                st.caption("Synthetic demo data")
             cols = st.columns(2)
             cols[0].metric("Cycles logged", stats.cycles_logged)
             cols[1].metric("Mean", format_stat(stats.mean))
@@ -1532,15 +1530,10 @@ if "pending_login_code" in st.session_state:
 mongo_uri = os.getenv("MONGODB_URI", "").strip()
 database_name = (os.getenv("MONGODB_DATABASE") or "phase").strip() or "phase"
 if not mongo_uri:
-    st.warning(
-        "Data storage: without a database connection, your account, check-ins, and "
-        "phase hearts stay in this session and reset when the app restarts. "
-        "To keep them, set MONGODB_URI in apps/web/.env."
-    )
     database = connect_in_memory_cached(database_name)
     if database is None:
         st.title("Cadence")
-        st.error("In-memory store is unavailable.")
+        st.error("Account service is unavailable.")
         st.stop()
 else:
     try:
@@ -1548,9 +1541,7 @@ else:
     except PyMongoError:
         st.title("Cadence")
         st.error(
-            "Could not connect to MongoDB. Check the connection string, database "
-            "network access, and credentials in apps/web/.env. No account data was "
-            "loaded."
+            "Could not connect to your account service. Please try again later."
         )
         st.stop()
 
@@ -1561,7 +1552,7 @@ if "account_id" not in st.session_state:
 try:
     account = database.accounts.find_one({"_id": st.session_state["account_id"]})
 except PyMongoError:
-    st.error("Could not load your account from MongoDB. Please reload.")
+    st.error("Could not load your account. Please reload.")
     st.stop()
 if account is None:
     st.session_state.pop("account_id", None)
@@ -1588,7 +1579,7 @@ if st.session_state.get("flow_step") != "dashboard":
 try:
     today_checkin = get_checkin(database.checkins, account["_id"], TODAY)
 except PyMongoError:
-    st.error("Could not load today's check-in from MongoDB. Please reload.")
+    st.error("Could not load today's check-in. Please reload.")
     st.stop()
 if today_checkin is None:
     st.session_state["flow_step"] = "checkin"

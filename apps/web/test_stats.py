@@ -49,7 +49,6 @@ class StatsTests(unittest.TestCase):
         pdf = build_report_pdf_bytes(stats, synthetic=True)
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertIn(b"Self-reported data", pdf)
-        self.assertIn(b"Synthetic demo data", pdf)
 
 
 if __name__ == "__main__":

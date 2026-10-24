@@ -125,8 +125,6 @@ def build_report_pdf_bytes(
     lines: list[tuple[str, str, int, tuple[float, float, float]]] = []
     lines.append(("F2", title, 22, (0.608, 0.106, 0.188)))
     lines.append(("F3", "Self-reported data", 11, (0.42, 0.36, 0.33)))
-    if synthetic:
-        lines.append(("F3", "Synthetic demo data", 11, (0.42, 0.36, 0.33)))
     lines.append(("F1", "", 10, (0.0, 0.0, 0.0)))
     lines.append(("F2", "Cycle summary", 14, (0.353, 0.059, 0.110)))
     rows = [
