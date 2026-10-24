@@ -51,9 +51,13 @@ export function createApp(config: AppConfig = {}): express.Express {
           schema: geminiJsonSchema,
         },
       });
-      const parsed = geminiResponseSchema.parse(
-        JSON.parse(interaction.output_text),
+      const output = interaction.outputs?.find(
+        (item) => item.type === "text",
       );
+      if (!output || output.type !== "text") {
+        throw new Error("Gemini returned no text output");
+      }
+      const parsed = geminiResponseSchema.parse(JSON.parse(output.text));
       response.json(parsed);
     } catch (error) {
       next(error);
