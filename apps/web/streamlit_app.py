@@ -33,6 +33,21 @@ from phase_engine import (
     weekly_workout_schedule,
 )
 
+from help_kb import filter_help, pick_daily_help, SYMPTOMS, LENSES
+from stats import compute_cycle_stats, build_report_pdf_bytes, format_stat
+
+try:
+    from inmemory_db import connect_in_memory
+except Exception:
+    connect_in_memory = None
+
+
+@st.cache_resource
+def connect_in_memory_cached(database_name: str):
+    if connect_in_memory is None:
+        return None
+    return connect_in_memory(database_name)
+
 
 load_dotenv(Path(__file__).with_name(".env"))
 TODAY = date.today()
@@ -130,13 +145,13 @@ st.markdown(
     <style>
     :root {
         color-scheme: light;
-        --cherry: #8B1E26;
-        --crimson: #B22222;
-        --gold: #D4AF37;
-        --champagne: #F3E5AB;
-        --parchment: #F7F2E7;
-        --mahogany: #2B1B17;
-        --espresso: #1C1311;
+        --cherry: #9B1B30;
+        --crimson: #5A0F1C;
+        --gold: #C9A24B;
+        --champagne: #F3E9D2;
+        --parchment: #F3E9D2;
+        --mahogany: #5A0F1C;
+        --espresso: #2A1A14;
         --taupe: #6E5B54;
     }
     .stApp, [data-testid="stAppViewContainer"] {
@@ -446,6 +461,60 @@ st.markdown(
             min-height: 3rem;
             padding-inline: 1.05rem;
         }
+    }
+    /* Export PDF and primary download actions */
+    div.stDownloadButton > button {
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0) 48%),
+            linear-gradient(180deg, var(--crimson) 0%, var(--cherry) 100%) !important;
+        color: var(--parchment) !important;
+        border: 2px solid var(--gold) !important;
+        border-radius: 999px !important;
+        min-height: 3.15rem;
+        padding: 0.68rem 1.45rem;
+        font-family: "Cormorant Garamond", "Palatino Linotype", Georgia, serif;
+        font-size: 1.13rem;
+        font-weight: 700;
+        box-shadow: 0 8px 16px -2px rgba(43, 27, 23, 0.35), inset 0 -3px 6px rgba(0, 0, 0, 0.4);
+        transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+    }
+    div.stDownloadButton > button:hover {
+        color: #FFFFFF !important;
+        border-color: var(--champagne) !important;
+        filter: brightness(1.08);
+        transform: translateY(-2px);
+    }
+    /* What might help controls */
+    [data-testid="stSegmentedControl"] button {
+        border-radius: 999px !important;
+        border: 1.5px solid var(--gold) !important;
+        color: var(--cherry) !important;
+        background: rgba(243, 233, 210, 0.7) !important;
+        font-weight: 700;
+    }
+    [data-testid="stSegmentedControl"] button[aria-checked="true"] {
+        background: linear-gradient(180deg, var(--crimson), var(--cherry)) !important;
+        color: var(--parchment) !important;
+    }
+    [data-testid="stSelectbox"] [data-baseweb="select"] {
+        border-radius: 999px !important;
+        border: 1.5px solid var(--gold) !important;
+        background: rgba(243, 233, 210, 0.7) !important;
+    }
+    .luna-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 2px solid var(--gold);
+        background: radial-gradient(circle at 30% 30%, var(--champagne), var(--cherry));
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--parchment);
+        font-family: "Playfair Display", Georgia, serif;
+        font-weight: 700;
+        font-size: 1.2rem;
+        box-shadow: 0 4px 10px rgba(43, 27, 23, 0.25);
     }
     </style>
     """,
@@ -1165,7 +1234,11 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
     readback_text = st.session_state.get("voice_readback_text")
     if isinstance(readback_text, str) and readback_text.strip():
         with st.container(border=True, key="card_luna_readback"):
-            st.markdown("**Luna**")
+            st.markdown(
+                '<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.3rem;">'
+                '<span class="luna-avatar">L</span><strong>Luna</strong></div>',
+                unsafe_allow_html=True,
+            )
             st.write(readback_text)
             audio_bytes = st.session_state.get("voice_readback_audio")
             if isinstance(audio_bytes, (bytes, bytearray)) and audio_bytes:
@@ -1194,8 +1267,8 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 prediction.phase,
             )
 
-    today_tab, workout_tab, meals_tab, help_tab, report_tab = st.tabs(
-        ("Today", "Train", "Meals", "What might help", "Report")
+    today_tab, workout_tab, help_tab, report_tab = st.tabs(
+        ("Today", "Train", "What might help", "Report")
     )
 
     with today_tab:
@@ -1286,17 +1359,68 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                         lock_phase_plan(database.phase_locks, account["_id"])
                         st.rerun()
 
-    with meals_tab:
-        st.subheader("Today's meal prep idea")
-        st.caption("No meal-prep idea has been generated for today.")
-
     with help_tab:
         st.subheader("What might help")
-        st.caption("No sourced guidance is available for this check-in.")
+        symptom_mode = prediction.symptom_mode
+        phase_value = prediction.phase
+        if symptom_mode:
+            st.caption("All days")
+        else:
+            st.caption(f"Phase: {phase_value or 'All days'}")
+        lens = st.segmented_control(
+            "Lens", options=list(LENSES), default="Medicine", key="help-lens"
+        ) or "Medicine"
+        symptom = st.selectbox("Symptom", options=list(SYMPTOMS), key="help-symptom")
+        entries = filter_help(
+            phase=phase_value,
+            lens=lens,
+            symptom=symptom,
+            symptom_mode=symptom_mode,
+        )
+        if not entries:
+            st.caption("No sourced guidance matches this selection.")
+        for entry in entries:
+            with st.container(border=True):
+                st.markdown(f"### {entry.title}")
+                st.write(entry.body)
+                st.caption(f"Evidence: {entry.evidence}")
+                st.caption(f"Source: {entry.source_domain}")
+                st.caption(f"Retrieved {entry.retrieved_at}")
 
     with report_tab:
         st.subheader("Appointment report")
-        st.caption("Your report will include summaries of your logged history.")
+        checkins = list_checkins(database.checkins, account["_id"])
+        stats = compute_cycle_stats(checkins, today=TODAY)
+        with st.container(border=True):
+            st.markdown("### Cadence summary")
+            if True:
+                st.caption("Synthetic demo data")
+            cols = st.columns(2)
+            cols[0].metric("Cycles logged", stats.cycles_logged)
+            cols[1].metric("Mean", format_stat(stats.mean))
+            cols = st.columns(2)
+            cols[0].metric("Median", format_stat(stats.median))
+            cols[1].metric("Mode", format_stat(stats.mode))
+            cols = st.columns(2)
+            cols[0].metric("Range", format_stat(stats.range_span))
+            cols[1].metric("Standard deviation", format_stat(stats.stdev))
+            if stats.bar_counts:
+                st.caption("Cycle lengths: " + ", ".join(
+                    f"{length}d x{count}" for length, count in stats.bar_counts
+                ))
+            if stats.flags:
+                st.caption("Flags: " + "; ".join(stats.flags))
+        pdf = build_report_pdf_bytes(stats, synthetic=True)
+        st.download_button(
+            "Export PDF",
+            data=pdf,
+            file_name="cadence-report.pdf",
+            mime="application/pdf",
+        )
+        with st.container(border=True):
+            st.markdown("### Partner brief")
+            st.caption("Preview and share")
+            st.write("No identifiers are included in the partner brief.")
 
 
 if "pending_login_code" in st.session_state:
@@ -1306,23 +1430,27 @@ if "pending_login_code" in st.session_state:
 mongo_uri = os.getenv("MONGODB_URI", "").strip()
 database_name = (os.getenv("MONGODB_DATABASE") or "phase").strip() or "phase"
 if not mongo_uri:
-    st.title("Cadence")
-    st.error(
-        "Account storage is not configured. Set MONGODB_URI in "
-        "apps/web/.env, then restart Streamlit."
+    st.warning(
+        "Running without MongoDB: accounts, check-ins, and phase hearts are "
+        "stored in memory and reset when the app restarts. Set MONGODB_URI in "
+        "apps/web/.env for persistent storage."
     )
-    st.stop()
-
-try:
-    database = connect_database(mongo_uri, database_name)
-except PyMongoError:
-    st.title("Cadence")
-    st.error(
-        "Could not connect to MongoDB. Check the connection string, database "
-        "network access, and credentials in apps/web/.env. No account data was "
-        "loaded."
-    )
-    st.stop()
+    database = connect_in_memory_cached(database_name)
+    if database is None:
+        st.title("Cadence")
+        st.error("In-memory store is unavailable.")
+        st.stop()
+else:
+    try:
+        database = connect_database(mongo_uri, database_name)
+    except PyMongoError:
+        st.title("Cadence")
+        st.error(
+            "Could not connect to MongoDB. Check the connection string, database "
+            "network access, and credentials in apps/web/.env. No account data was "
+            "loaded."
+        )
+        st.stop()
 
 if "account_id" not in st.session_state:
     show_auth_page()

@@ -12,3 +12,6 @@ apps/web/.env
 __pycache__/
 *.py[cod]
 .streamlit/secrets.toml
+
+*.log
+*.log.*

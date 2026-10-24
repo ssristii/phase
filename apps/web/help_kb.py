@@ -122,6 +122,93 @@ HELP_ENTRIES: tuple[HelpEntry, ...] = (
         source_url="https://www.acsm.org/education-resources/trending-topics-resources/physical-activity-guidelines",
         retrieved_at="2026-10-01",
     ),
+    HelpEntry(
+        id="med-cramps-all",
+        phase="All days",
+        lens="Medicine",
+        symptom="Cramps",
+        title="Gentle heat and rest",
+        body=(
+            "Warmth on the lower abdomen and easy rest are common self-care "
+            "options for cramp discomfort."
+        ),
+        evidence="Established",
+        source_domain="acog.org",
+        source_url="https://www.acog.org/womens-health/faqs/dysmenorrhea-painful-periods",
+        retrieved_at="2026-10-01",
+    ),
+    HelpEntry(
+        id="med-mood-all",
+        phase="All days",
+        lens="Medicine",
+        symptom="Mood",
+        title="Steady daily rhythm",
+        body=(
+            "A consistent sleep and meal rhythm supports mood on most days."
+        ),
+        evidence="Emerging",
+        source_domain="nih.gov",
+        source_url="https://www.ncbi.nlm.nih.gov/books/NBK279054/",
+        retrieved_at="2026-10-01",
+    ),
+    HelpEntry(
+        id="med-sleep-all",
+        phase="All days",
+        lens="Medicine",
+        symptom="Sleep",
+        title="Wind-down routine",
+        body=(
+            "A calm evening routine and steady bedtime support better sleep."
+        ),
+        evidence="Established",
+        source_domain="cdc.gov",
+        source_url="https://www.cdc.gov/sleep/about/index.html",
+        retrieved_at="2026-10-01",
+    ),
+    HelpEntry(
+        id="med-bloating-all",
+        phase="All days",
+        lens="Medicine",
+        symptom="Bloating",
+        title="Gentle movement and hydration",
+        body=(
+            "Light walking and steady hydration can ease bloating for many people."
+        ),
+        evidence="Emerging",
+        source_domain="nccih.nih.gov",
+        source_url="https://www.nccih.nih.gov/",
+        retrieved_at="2026-10-01",
+    ),
+    HelpEntry(
+        id="ayu-cramps-warm",
+        phase="All days",
+        lens="Ayurveda",
+        symptom="Cramps",
+        title="Warmth and gentle routine",
+        body=(
+            "Traditional guidance favors warmth and a calm daily routine. "
+            "This is lifestyle framing only."
+        ),
+        evidence="Traditional",
+        source_domain="nccih.nih.gov",
+        source_url="https://www.nccih.nih.gov/health/ayurvedic-medicine-in-depth",
+        retrieved_at="2026-10-01",
+    ),
+    HelpEntry(
+        id="tcm-bloating-warm",
+        phase="All days",
+        lens="TCM",
+        symptom="Bloating",
+        title="Warm foods and calm evenings",
+        body=(
+            "Traditional lifestyle advice favors warm foods and a calm evening. "
+            "No herbs or dosing are suggested here."
+        ),
+        evidence="Traditional",
+        source_domain="nccih.nih.gov",
+        source_url="https://www.nccih.nih.gov/health/traditional-chinese-medicine-what-you-need-to-know",
+        retrieved_at="2026-10-01",
+    ),
 )
 
 
@@ -143,6 +230,14 @@ def filter_help(
         and entry.phase in {phase_key, "All days"}
         and entry.evidence in EVIDENCE_LABELS
     ]
+    if not matched:
+        matched = [
+            entry
+            for entry in HELP_ENTRIES
+            if entry.symptom == symptom
+            and entry.phase in {"All days"}
+            and entry.evidence in EVIDENCE_LABELS
+        ]
     return matched
 
 
