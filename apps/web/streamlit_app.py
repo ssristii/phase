@@ -371,11 +371,6 @@ def show_auth_page() -> None:
     sign_in_tab, create_tab = st.tabs(("Sign in", "Create account"))
 
     with sign_in_tab:
-        if is_demo_mode():
-            st.markdown(
-                '<span class="phase-chip">Demo account, synthetic data</span>',
-                unsafe_allow_html=True,
-            )
         with st.form("sign-in-form"):
             code = st.text_input(
                 "Your 10-character sign-in code",
@@ -1019,13 +1014,9 @@ def phase_wheel(
 
 def show_dashboard(account, profile: dict, checkin: dict) -> None:
     if account.get("demo_account") or account.get("is_demo") or account.get("demo"):
-        st.markdown(
-            '<span class="phase-chip">Synthetic demo data</span>',
-            unsafe_allow_html=True,
-        )
         if is_demo_mode():
             with st.container(border=True):
-                st.caption("Demo controls")
+                st.caption("Account controls")
                 if st.button("Reset demo", key="demo_reset"):
                     ensure_demo_account(database, seed=42, today=TODAY)
                     st.session_state["intro_pending"] = True

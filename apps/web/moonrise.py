@@ -64,7 +64,7 @@ def moonrise_markup() -> str:
         '<div class="g"><div class="h"></div><div class="i"><div class="j"></div><div class="k"><div class="l x"></div><div class="l y"></div><div class="m"></div><div class="n x"></div><div class="n y"></div></div></div></div>'
         '<div class="o"><div class="p q"></div><div class="p r"></div><div class="p t"></div><div class="u"></div></div>'
         '<div class="v"></div>'
-        '<div class="w"><div class="x">Finding your rhythm</div><div class="x">Almost there</div><div class="x">Ready</div></div>'
+        '<div class="w"><div class="x">Preparing your dashboard</div></div>'
         '<div class="y" aria-live="polite">Preparing your dashboard</div>'
         '</div>'
     )

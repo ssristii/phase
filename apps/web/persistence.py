@@ -310,7 +310,14 @@ def _seed_demo_data(database, account_id: str, *, seed: int = 42, today: date | 
     rng = random.Random(seed)
     _clear_demo_data(database, account_id)
 
-    last_period = today - timedelta(days=23)
+    # Vary cycle lengths across the seeded history so the current phase is not
+    # fixed to one part of the cycle.
+    today_cycle_day = rng.randint(1, 33)
+    cycle_lengths = [rng.randint(24, 33) for _ in range(6)]
+    bleed_lengths = [rng.randint(4, 6) for _ in cycle_lengths]
+    today_cycle_day = (today_cycle_day % cycle_lengths[0]) + 1
+    last_period = today - timedelta(days=today_cycle_day - 1)
+
     profile = {
         "version": PROFILE_VERSION,
         "age": 27,
@@ -335,27 +342,55 @@ def _seed_demo_data(database, account_id: str, *, seed: int = 42, today: date | 
         },
     )
 
+    # Build period starts backward from the current cycle.
+    period_starts = [last_period]
+    for length in cycle_lengths[1:]:
+        period_starts.append(period_starts[-1] - timedelta(days=length))
+    period_starts.sort()
+
+    def _cycle_info(day):
+        current_start = period_starts[0]
+        for start in period_starts:
+            if start <= day:
+                current_start = start
+            else:
+                break
+        later_starts = [start for start in period_starts if start > current_start]
+        cycle_length = (
+            (min(later_starts) - current_start).days
+            if later_starts
+            else cycle_lengths[0]
+        )
+        cycle_index = period_starts.index(current_start)
+        bleed_length = bleed_lengths[
+            cycle_index if cycle_index < len(bleed_lengths) else -1
+        ]
+        cycle_day = (day - current_start).days + 1
+        ovulation_day = max(8, min(cycle_length - 10, cycle_length - 14))
+        return cycle_length, bleed_length, cycle_day, ovulation_day
+
     moods = ["Low", "Okay", "Good", "Anxious", "Irritable", "Flat"]
     for offset in range(90):
         day = today - timedelta(days=offset)
         if offset != 0 and rng.random() < 0.12:
             continue
-        cycle_day = (day - last_period).days + 1
-        normalized_day = ((cycle_day - 1) % 28) + 1
-        if normalized_day <= 5:
+        cycle_length, bleed_length, cycle_day, ovulation_day = _cycle_info(day)
+        if cycle_day <= bleed_length:
             flow = rng.choice(["Light", "Medium", "Heavy"])
-        elif rng.random() < 0.15:
+        elif rng.random() < 0.08:
             flow = "Spotting"
         else:
             flow = "None"
-        if normalized_day <= 5:
+        if cycle_day <= bleed_length:
             pain = rng.randint(3, 7)
-        elif normalized_day >= 22:
+        elif ovulation_day - 1 <= cycle_day <= ovulation_day + 1:
+            pain = rng.randint(0, 3)
+        elif cycle_day >= cycle_length - 7:
             pain = rng.randint(2, 6)
         else:
             pain = rng.randint(0, 4)
         energy = rng.randint(2, 5)
-        if normalized_day >= 20:
+        if cycle_day <= bleed_length or cycle_day >= cycle_length - 7:
             energy = max(1, energy - 1)
         sleep = round(rng.uniform(6.0, 8.5), 1)
         mood = rng.choice(moods)
@@ -381,9 +416,7 @@ def _seed_demo_data(database, account_id: str, *, seed: int = 42, today: date | 
             "pregnancy": False,
             "cravings": cravings,
         }
-        save_checkin(database.checkins, account_id, values, day)
-
-    # Remove any three-day heavy-flow streaks from the seeded history.
+        save_checkin(database.checkins, account_id, values, day)    # Remove any three-day heavy-flow streaks from the seeded history.
     history = sorted(
         list_checkins(database.checkins, account_id),
         key=lambda item: item.get("checkin_date", ""),
@@ -425,12 +458,12 @@ def _seed_demo_data(database, account_id: str, *, seed: int = 42, today: date | 
     )
     for row in history:
         row_date = date.fromisoformat(row["checkin_date"])
-        normalized_day = ((row_date - last_period).days % 28) + 1
-        if normalized_day <= 5:
+        cycle_length, bleed_length, cycle_day, ovulation_day = _cycle_info(row_date)
+        if cycle_day <= bleed_length:
             phase = "Menstrual"
-        elif normalized_day < 13:
+        elif cycle_day < ovulation_day - 1:
             phase = "Follicular"
-        elif normalized_day <= 16:
+        elif cycle_day <= ovulation_day + 1:
             phase = "Ovulatory"
         else:
             phase = "Luteal"

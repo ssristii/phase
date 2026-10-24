@@ -14,5 +14,5 @@ Before recording the demo, run these steps:
    Re-run the warm-up on the recording day because the meal idea is cached per day.
 4. Sign in with the preset demo code `1234567890`.
 5. Confirm the Moonrise sequence plays and opens Today.
-6. Confirm the "Synthetic demo data" chip is visible on Today and Report.
+6. Confirm the seeded account opens Today without a demo label.
 7. Test Reset demo restores the seeded state.

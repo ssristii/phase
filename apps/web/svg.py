@@ -232,7 +232,9 @@ def wave_timeline_svg(start_date, days=14, checkins=None):
     checkins = checkins or []
     by_date = {}
     for item in checkins:
-        raw = item.get("date") if isinstance(item, dict) else None
+        raw = item.get("checkin_date") if isinstance(item, dict) else None
+        if raw is None and isinstance(item, dict):
+            raw = item.get("date")
         if isinstance(raw, str):
             try:
                 d = date.fromisoformat(raw)
@@ -252,6 +254,9 @@ def wave_timeline_svg(start_date, days=14, checkins=None):
         "tired": "#B8587A",
         "low": "#9B1B30",
         "energized": "#C9A24B",
+        "anxious": "#B8587A",
+        "irritable": "#9B1B30",
+        "flat": "#B8587A",
     }
     width = 60 * n + 40
     height = 220
