@@ -911,6 +911,13 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
     )
 
     with today_tab:
+        if safety.alerts:
+            st.error(
+                "Please consider contacting a clinician. Plans are suppressed "
+                "for this check-in."
+            )
+            for alert in safety.alerts:
+                st.write(f"- {alert}")
         with st.container(border=True):
             st.subheader("Where you are")
             if prediction.phase is None:
@@ -929,23 +936,64 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 if prediction.population_default:
                     st.caption("Estimated from typical cycles.")
                 st.write(prediction.reason)
+        if st.button("Check in", key="today_check_in_pill"):
+            st.session_state["flow_step"] = "checkin"
+            st.rerun()
         with st.container(border=True):
             st.markdown("#### Today's check-in")
-            st.write(
-                f"Mood: {checkin['mood']}  |  Energy: {checkin['energy']}/5  |  "
-                f"Sleep: {checkin['sleep_hours']:g} hours  |  "
-                f"Pain: {checkin['pain']}/10"
-            )
-        if safety.alerts:
-            st.error(
-                "Please consider contacting a clinician. Plans are suppressed "
-                "for this check-in."
-            )
-            for alert in safety.alerts:
-                st.write(f"- {alert}")
+            c1, c2 = st.columns(2)
+            with c1:
+                with st.container(border=True):
+                    st.caption("Mood")
+                    st.markdown(f"**{checkin.get('mood', '-')}**")
+                with st.container(border=True):
+                    st.caption("Sleep")
+                    st.markdown(f"**{checkin.get('sleep_hours', '-')} h**")
+            with c2:
+                with st.container(border=True):
+                    st.caption("Energy")
+                    st.markdown(f"**{checkin.get('energy', '-')}/5**")
+                with st.container(border=True):
+                    st.caption("Flow")
+                    st.markdown(f"**{checkin.get('flow', '-')}**")
+        import svg as _svg
+        st.markdown("#### Energy wave")
+        st.markdown(
+            _svg.wave_timeline_svg(
+                start_date=TODAY - timedelta(days=6),
+                days=14,
+                checkins=history,
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown("#### What to do today")
+        if st.button("Generate my plan", type="primary", key="generate_plan_today"):
+            st.session_state["plan_generated"] = True
+        cols = st.columns(2)
+        with cols[0]:
+            if st.button("Save this plan", key="save_plan_today"):
+                st.session_state["plan_saved"] = True
+        with cols[1]:
+            if st.button("Replace", key="replace_plan_today"):
+                st.session_state["plan_replaced"] = True
+        with st.container(border=True):
+            st.markdown("**Workout**")
+            st.write("See the Train tab for today's session.")
+            st.markdown("**Meals**")
+            st.write("Grocery and meal ideas are in the grocery tab.")
+            st.markdown("**Recovery**")
+            st.write("Rest, hydration, and gentle mobility.")
+        st.markdown("#### Phase hearts")
+        heart_cols = st.columns(4)
+        for col, name in zip(heart_cols, ("Follicular", "Ovulatory", "Luteal", "Menstrual")):
+            with col:
+                with st.container(border=True):
+                    st.caption(name)
+                    st.markdown("&#9829;")
         st.button(
             "Update how I feel",
             on_click=lambda: st.session_state.update({"flow_step": "checkin"}),
+            key="update_feel_today",
         )
 
     with workout_tab:
