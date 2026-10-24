@@ -62,26 +62,45 @@ export function createApp(config: AppConfig = {}): express.Express {
 
   app.post(
     "/api/cartesia/transcribe",
-    express.raw({ type: "audio/mp4", limit: "10mb" }),
+    express.raw({
+      type: ["audio/mp4", "audio/wav", "audio/x-wav"],
+      limit: "10mb",
+    }),
     async (request, response, next) => {
-      if (!config.cartesiaApiKey) {
-        response
-          .status(503)
-          .json({ error: "CARTESIA_API_KEY is not configured" });
+      const audioContentType = request.headers["content-type"]
+        ?.split(";")[0]
+        .toLowerCase();
+      const audioFile = {
+        "audio/mp4": { extension: "m4a", mimeType: "audio/mp4" },
+        "audio/wav": { extension: "wav", mimeType: "audio/wav" },
+        "audio/x-wav": { extension: "wav", mimeType: "audio/x-wav" },
+      }[audioContentType ?? ""];
+      if (!audioFile) {
+        response.status(415).json({
+          error: "Audio must be an MP4 or WAV recording",
+        });
         return;
       }
       if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
         response.status(400).json({ error: "A recorded audio file is required" });
         return;
       }
+      if (!config.cartesiaApiKey) {
+        response
+          .status(503)
+          .json({ error: "CARTESIA_API_KEY is not configured" });
+        return;
+      }
 
       try {
         const form = new FormData();
-        // Cartesia API signature: POST /stt with multipart fields file and model.
+        // Cartesia API: POST /stt multipart fields file, model, and language; send Cartesia-Version.
         form.append(
           "file",
-          new Blob([new Uint8Array(request.body)], { type: "audio/mp4" }),
-          "phase-check-in.m4a",
+          new Blob([new Uint8Array(request.body)], {
+            type: audioFile.mimeType,
+          }),
+          `phase-check-in.${audioFile.extension}`,
         );
         form.append("model", "ink-whisper");
         form.append("language", "en");

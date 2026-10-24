@@ -60,4 +60,28 @@ describe("Phase API smoke checks", () => {
       error: "CARTESIA_API_KEY is not configured",
     });
   });
+
+  it("accepts WAV uploads for the browser voice check-in", async () => {
+    const response = await fetch(`${baseUrl}/api/cartesia/transcribe`, {
+      method: "POST",
+      headers: { "Content-Type": "audio/wav" },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      error: "CARTESIA_API_KEY is not configured",
+    });
+  });
+
+  it("rejects unsupported audio types", async () => {
+    const response = await fetch(`${baseUrl}/api/cartesia/transcribe`, {
+      method: "POST",
+      headers: { "Content-Type": "audio/webm" },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    assert.equal(response.status, 415);
+    assert.deepEqual(await response.json(), {
+      error: "Audio must be an MP4 or WAV recording",
+    });
+  });
 });

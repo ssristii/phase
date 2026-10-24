@@ -20,7 +20,9 @@ Stage 2 phone probe must not label record-then-upload as live transcription.
 The default fallback is to record a temporary file, upload the completed file
 to Batch STT, show the full editable transcript, and delete the local file after
 the request finishes. The Batch STT API accepts containerized `m4a`, `mp3`,
-`wav`, `webm`, and other listed formats with `model: "ink-whisper"`.
+`wav`, `webm`, and other listed formats with `model: "ink-whisper"`. The
+browser prototype's recording widget returns WAV, so the local API accepts
+`audio/wav` and forwards the recording as a WAV file to `POST /stt`.
 
 For native clients, Cartesia says to mint short-lived access tokens on the
 server rather than expose the API key. The official JavaScript example is:
@@ -47,4 +49,8 @@ actual playback on the phone before claiming Cartesia readback works.
 - Streaming mic audio is unverified and is not supported by the documented
   `expo-audio` recording interface. Use record-then-upload unless a phone test
   demonstrates a supported PCM capture path.
+- The browser voice path records first, then submits WAV to the local Express
+  API for Batch STT. It is not live streaming. The API binds to localhost so
+  the unauthenticated smoke endpoints are not exposed to other devices on
+  shared Wi-Fi.
 - Do not claim Cartesia integration until a real-device test succeeds.
