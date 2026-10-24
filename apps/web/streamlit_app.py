@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import re
 import io
 from datetime import date, datetime, timedelta, timezone
@@ -18,9 +19,12 @@ from persistence import (
     authenticate_account,
     create_account,
     count_phase_hearts,
+    demo_mode_conflicts_with_production,
+    ensure_demo_account,
     get_checkin,
     get_phase_lock,
     get_readiness_weights,
+    is_demo_mode,
     list_checkins,
     lock_phase_plan,
     save_checkin,
@@ -367,9 +371,15 @@ def show_auth_page() -> None:
     sign_in_tab, create_tab = st.tabs(("Sign in", "Create account"))
 
     with sign_in_tab:
+        if is_demo_mode():
+            st.markdown(
+                '<span class="phase-chip">Demo account, synthetic data</span>',
+                unsafe_allow_html=True,
+            )
         with st.form("sign-in-form"):
             code = st.text_input(
                 "Your 10-character sign-in code",
+                value="1234567890" if is_demo_mode() else "",
                 max_chars=12,
                 type="password",
                 help="This code is the only way to sign back in.",
@@ -1008,6 +1018,39 @@ def phase_wheel(
 
 
 def show_dashboard(account, profile: dict, checkin: dict) -> None:
+    if account.get("demo_account") or account.get("is_demo") or account.get("demo"):
+        st.markdown(
+            '<span class="phase-chip">Synthetic demo data</span>',
+            unsafe_allow_html=True,
+        )
+        if is_demo_mode():
+            with st.container(border=True):
+                st.caption("Demo controls")
+                if st.button("Reset demo", key="demo_reset"):
+                    ensure_demo_account(database, seed=42, today=TODAY)
+                    st.session_state["intro_pending"] = True
+                    st.session_state["intro_variant"] = "login"
+                    st.session_state["flow_step"] = "dashboard"
+                    st.rerun()
+                if st.button("New random run", key="demo_random"):
+                    ensure_demo_account(database, seed=random.randint(1, 10_000), today=TODAY)
+                    st.session_state["intro_pending"] = True
+                    st.session_state["intro_variant"] = "login"
+                    st.session_state["flow_step"] = "dashboard"
+                    st.rerun()
+                if st.button("Simulate next day", key="demo_next_day"):
+                    st.session_state["flow_step"] = "checkin"
+                    st.rerun()
+                if st.button("Show clinician banner", key="demo_banner"):
+                    st.session_state["demo_show_banner"] = True
+                    st.rerun()
+                if st.button("Use sample transcript", key="demo_sample_transcript"):
+                    st.session_state["voice_transcript"] = (
+                        "Sample text, not a recording. Sleep was poor and pain is high today."
+                    )
+                    st.rerun()
+                if st.session_state.get("demo_show_banner"):
+                    st.error("Please consider contacting a clinician. Plans are suppressed for this check-in.")
     unsure = profile.get("cycle_date_unsure", False)
     tracking_mode = profile.get(
         "cycle_tracking_mode",
@@ -1348,6 +1391,21 @@ else:
         st.error(
             "Could not connect to your account service. Please try again later."
         )
+        st.stop()
+
+if demo_mode_conflicts_with_production():
+    print("ERROR: DEMO_MODE=1 cannot be used with PRODUCTION=1 or ENVIRONMENT=production", flush=True)
+    st.title("Cadence")
+    st.error("Refusing to start: demo mode cannot be enabled in production.")
+    st.stop()
+
+if is_demo_mode():
+    try:
+        ensure_demo_account(database, seed=42, today=TODAY)
+    except Exception as error:
+        print(f"ERROR: demo account seeding failed: {error}", flush=True)
+        st.title("Cadence")
+        st.error("Demo account seeding failed.")
         st.stop()
 
 if "account_id" not in st.session_state:
