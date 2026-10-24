@@ -250,6 +250,15 @@ st.markdown(
         box-shadow: 0 10px 25px rgba(43, 27, 23, 0.17), inset 0 1px rgba(243, 229, 171, 0.08);
         position: relative;
         overflow: visible;
+        transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 32px rgba(43, 27, 23, 0.24), inset 0 1px rgba(243, 229, 171, 0.12);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        [data-testid="stVerticalBlockBorderWrapper"] { transition: none; }
+        [data-testid="stVerticalBlockBorderWrapper"]:hover { transform: none; }
     }
     [data-testid="stVerticalBlockBorderWrapper"]::before,
     [data-testid="stVerticalBlockBorderWrapper"]::after {
