@@ -213,3 +213,96 @@ def tide_wheel_svg(
         )
     parts.append('</svg>')
     return "".join(parts)
+
+def wave_timeline_svg(start_date, days=14, checkins=None):
+    from datetime import date, timedelta, datetime
+
+    if isinstance(start_date, str):
+        try:
+            start = date.fromisoformat(start_date)
+        except ValueError:
+            start = TODAY if False else date.today()
+    elif isinstance(start_date, datetime):
+        start = start_date.date()
+    elif isinstance(start_date, date):
+        start = start_date
+    else:
+        start = date.today()
+    n = max(10, min(20, int(days or 14)))
+    checkins = checkins or []
+    by_date = {}
+    for item in checkins:
+        raw = item.get("date") if isinstance(item, dict) else None
+        if isinstance(raw, str):
+            try:
+                d = date.fromisoformat(raw)
+            except ValueError:
+                continue
+        elif isinstance(raw, datetime):
+            d = raw.date()
+        elif isinstance(raw, date):
+            d = raw
+        else:
+            continue
+        by_date[d] = item
+    mood_colors = {
+        "great": "#F3DC9A",
+        "good": "#E9D49A",
+        "okay": "#E7879A",
+        "tired": "#B8587A",
+        "low": "#9B1B30",
+        "energized": "#C9A24B",
+    }
+    width = 60 * n + 40
+    height = 220
+    baseline = 110
+    points = []
+    for i in range(n):
+        d = start + timedelta(days=i)
+        item = by_date.get(d)
+        if item:
+            try:
+                energy = float(item.get("energy", 3))
+            except (TypeError, ValueError):
+                energy = 3.0
+            energy = max(1.0, min(5.0, energy))
+            mood = str(item.get("mood", "")).lower()
+            color = mood_colors.get(mood, "#F3E9D2")
+            logged = True
+        else:
+            energy = 3.0
+            color = "rgba(243,233,210,.35)"
+            logged = False
+        x = 30 + i * 60
+        y = baseline - (energy - 3.0) * 18.0
+        points.append((x, y, d, logged, color, energy))
+    # Build SVG path for wave.
+    path = "M " + " ".join(f"{p[0]},{p[1]}" for p in points)
+    # Use polyline.
+    svg_parts = []
+    svg_parts.append(
+        f''''<div class="wave-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">'''
+    )
+    svg_parts.append(
+        f''''<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" role="img" aria-label="14 day energy wave" xmlns="http://www.w3.org/2000/svg">'''
+    )
+    # grid baseline
+    svg_parts.append(f'<line x1="20" y1="{baseline}" x2="{width-20}" y2="{baseline}" stroke="rgba(233,212,154,.2)" stroke-width="1"/>')
+    # wave line
+    svg_parts.append(f'<polyline points="{" ".join(f"{p[0]},{p[1]}" for p in points)}" fill="none" stroke="#E9D49A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>')
+    # points
+    for x, y, d, logged, color, energy in points:
+        if logged:
+            svg_parts.append(f'<circle cx="{x}" cy="{y}" r="6" fill="{color}" stroke="#F3E9D2" stroke-width="1.5"/>')
+        else:
+            svg_parts.append(f'<circle cx="{x}" cy="{y}" r="4" fill="none" stroke="rgba(243,233,210,.35)" stroke-width="1"/>')
+        svg_parts.append(f'<text x="{x}" y="{height-8}" text-anchor="middle" fill="rgba(243,233,210,.6)" font-size="9">{d.strftime("%a")}</text>')
+    # today marker (first day? Assume start_date is today window start; mark day 0? We'll mark the day matching today)
+    from datetime import date as _date
+    today = _date.today()
+    for x, y, d, logged, color, energy in points:
+        if d == today:
+            svg_parts.append(f'<line x1="{x}" y1="20" x2="{x}" y2="{height-20}" stroke="rgba(243,233,210,.4)" stroke-width="1" stroke-dasharray="4 4"/>')
+            svg_parts.append(f'<text x="{x}" y="14" text-anchor="middle" fill="#F3E9D2" font-size="9">today</text>')
+    svg_parts.append('</svg></div>')
+    return "".join(svg_parts)
