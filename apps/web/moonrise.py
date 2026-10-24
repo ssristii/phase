@@ -49,7 +49,7 @@ def moonrise_markup() -> str:
         '@keyframes k6{0%{transform:translateX(0) scaleY(calc(1-var(--shine,0)*.82))}100%{transform:translateX(-50%) scaleY(calc(1-var(--shine,0)*.82))}}'
         '.u{position:absolute;top:0;left:0;width:200%;height:6px;background:linear-gradient(90deg,transparent 0%,rgba(233,212,154,.8) 50%,transparent 100%);animation:k6 4.5s linear infinite;}'
         '.v{position:absolute;left:50%;bottom:4%;width:2px;height:26%;transform:translateX(-50%);background:linear-gradient(180deg,rgba(233,212,154,0),rgba(233,212,154,.55),rgba(233,212,154,0));opacity:calc(.35+var(--shine,0)*.5);transition:opacity .6s ease;}'
-        '.w{position:absolute;left:50%;bottom:12%;transform:translateX(-50%);font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:1.35rem;color:#F3E9D2;text-align:center;}'
+        '.w{position:absolute;left:0;right:0;bottom:12%;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:1.35rem;color:#F3E9D2;text-align:center;}'
         '.x{position:absolute;left:0;right:0;text-align:center;opacity:0;animation:k7 4.5s ease-in-out infinite;}'
         '.x:nth-child(1){animation-delay:0s;}.x:nth-child(2){animation-delay:1.5s;}.x:nth-child(3){animation-delay:3s;}'
         '@keyframes k7{0%{opacity:0;transform:translateY(8px)}15%{opacity:1;transform:translateY(0)}35%{opacity:1;transform:translateY(0)}50%{opacity:0;transform:translateY(-8px)}100%{opacity:0}}'
@@ -64,7 +64,7 @@ def moonrise_markup() -> str:
         '<div class="g"><div class="h"></div><div class="i"><div class="j"></div><div class="k"><div class="l x"></div><div class="l y"></div><div class="m"></div><div class="n x"></div><div class="n y"></div></div></div></div>'
         '<div class="o"><div class="p q"></div><div class="p r"></div><div class="p t"></div><div class="u"></div></div>'
         '<div class="v"></div>'
-        '<div class="w"><div class="x">Preparing your dashboard</div></div>'
+        '<div class="w"><div class="x">Finding your rhythm</div><div class="x">Almost there</div><div class="x">Ready</div></div>'
         '<div class="y" aria-live="polite">Preparing your dashboard</div>'
         '</div>'
     )

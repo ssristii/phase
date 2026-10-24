@@ -273,7 +273,7 @@ def run_moonrise_sequence(variant: str) -> None:
 
     # Shine.
     style.markdown("<style>:root{--lit:1;--shine:1}</style>", unsafe_allow_html=True)
-    status.markdown('<div aria-live="polite">Ready</div>', unsafe_allow_html=True)
+    status.markdown('<div aria-live="polite">Preparing your dashboard</div>', unsafe_allow_html=True)
 
     # Skip appears after 1.5s total (best effort).
     if time.time() - start < 1.5:
@@ -292,7 +292,7 @@ def run_moonrise_sequence(variant: str) -> None:
 
     if time.time() > deadline:
         status.markdown(
-            '<div aria-live="polite">Some things are still loading</div>',
+            '<div aria-live="polite">Preparing your dashboard</div>',
             unsafe_allow_html=True,
         )
 
@@ -1017,13 +1017,13 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         if is_demo_mode():
             with st.container(border=True):
                 st.caption("Account controls")
-                if st.button("Reset demo", key="demo_reset"):
+                if st.button("Reset data", key="demo_reset"):
                     ensure_demo_account(database, seed=42, today=TODAY)
                     st.session_state["intro_pending"] = True
                     st.session_state["intro_variant"] = "login"
                     st.session_state["flow_step"] = "dashboard"
                     st.rerun()
-                if st.button("New random run", key="demo_random"):
+                if st.button("New random data", key="demo_random"):
                     ensure_demo_account(database, seed=random.randint(1, 10_000), today=TODAY)
                     st.session_state["intro_pending"] = True
                     st.session_state["intro_variant"] = "login"
@@ -1210,7 +1210,7 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         st.markdown("#### Energy wave")
         st.markdown(
             _svg.wave_timeline_svg(
-                start_date=TODAY - timedelta(days=6),
+                start_date=TODAY - timedelta(days=13),
                 days=14,
                 checkins=history,
             ),
@@ -1396,7 +1396,8 @@ if is_demo_mode():
     except Exception as error:
         print(f"ERROR: demo account seeding failed: {error}", flush=True)
         st.title("Cadence")
-        st.error("Demo account seeding failed.")
+        st.error("Account seeding failed.")
+
         st.stop()
 
 if "account_id" not in st.session_state:
