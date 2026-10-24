@@ -8,9 +8,10 @@ iPhone delivery is deferred.
 
 ## Stack
 
-Streamlit and Python for the current browser prototype, with the existing
-Express server available for server-side sponsor integrations. Keep API keys
-out of the browser. Native mobile delivery is deferred.
+Streamlit and Python for the current browser prototype, MongoDB for account and
+check-in persistence, and the existing localhost Express server for sponsor
+integrations. Keep database credentials and API keys out of the browser. Native
+mobile delivery is deferred.
 
 ## Non-negotiable rules
 

@@ -11,7 +11,8 @@ is informational and not a diagnosis.
 ## Stack
 
 - Streamlit and Python for the current browser prototype.
-- Existing Express server for server-side sponsor integrations.
+- MongoDB for account and check-in persistence; existing Express server for
+  server-side sponsor integrations.
 - Native iPhone app deferred; no Android build.
 - Keep API keys on the server. Do not put keys in browser-visible configuration.
 
