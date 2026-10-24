@@ -980,7 +980,7 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
             st.markdown("**Workout**")
             st.write("See the Train tab for today's session.")
             st.markdown("**Meals**")
-            st.write("Grocery and meal ideas are in the grocery tab.")
+            st.write("Meal ideas are planned in the meals tab.")
             st.markdown("**Recovery**")
             st.write("Rest, hydration, and gentle mobility.")
         st.markdown("#### Phase hearts")
