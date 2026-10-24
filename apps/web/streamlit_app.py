@@ -830,7 +830,17 @@ def show_voice_checkin() -> None:
                 )
             else:
                 st.markdown(
-                    '<p class="transcript-empty">Luna is listening...</p>',
+                    '<div style="display:flex;align-items:center;gap:0.65rem;margin:0.2rem 0 0.5rem;">'
+                    '<span class="luna-avatar" aria-hidden="true" style="width:40px;height:40px;">'
+                    '<svg viewBox="0 0 56 56" width="28" height="28" fill="none" xmlns="http://www.w3.org/2000/svg">'
+                    '<defs><radialGradient id="luna-moon-small" cx="35%" cy="30%"><stop offset="0%" stop-color="#FFF7E6"/><stop offset="100%" stop-color="#C9A24B"/></radialGradient></defs>'
+                    '<circle cx="28" cy="28" r="24" fill="url(#luna-moon-small)"/>'
+                    '<path d="M34 14a16 16 0 1 0 0 28 13 13 0 0 1 0-28Z" fill="#F3E5AB" opacity="0.85"/>'
+                    '<circle cx="20" cy="22" r="2.6" fill="#2B1B17"/>'
+                    '<circle cx="32" cy="22" r="2.6" fill="#2B1B17"/>'
+                    '<path d="M20 31c3 3.6 13 3.6 16 0" stroke="#2B1B17" stroke-width="2.2" stroke-linecap="round"/>'
+                    '</svg></span>'
+                    '<p class="transcript-empty" style="margin:0;">Luna is listening...</p></div>',
                     unsafe_allow_html=True,
                 )
             # Streamlit 1.53.1 signature: audio_input(label, *, sample_rate=16000, key=None, help=None, on_change=None, args=None, kwargs=None, disabled=False, label_visibility="visible", width="stretch").
