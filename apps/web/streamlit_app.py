@@ -405,27 +405,27 @@ def show_voice_checkin() -> None:
                     unsafe_allow_html=True,
                 )
             # Streamlit 1.53.1 signature: audio_input(label, *, sample_rate=16000, key=None, help=None, on_change=None, args=None, kwargs=None, disabled=False, label_visibility="visible", width="stretch").
-            voice_audio = st.audio_input(
-                "Record your check-in",
-                sample_rate=16000,
-                key=f"audio_{int(st.session_state.get('audio_nonce', 0))}",
-                help="Your browser may ask for microphone access.",
-            )
-            uploaded_audio = st.file_uploader(
-                "Or upload an audio file",
-                type=("wav", "mp3", "m4a", "mp4", "webm", "ogg"),
-                key="voice-upload",
-            )
-            transcribe_voice = st.button(
-                "Transcribe with Cartesia",
-                key="transcribe-voice",
-            )
+            with st.form("voice-checkin-form"):
+                voice_audio = st.audio_input(
+                    "Record your check-in",
+                    sample_rate=16000,
+                    key=f"audio_{int(st.session_state.get('audio_nonce', 0))}",
+                    help="Your browser may ask for microphone access.",
+                )
+                uploaded_audio = st.file_uploader(
+                    "Or upload an audio file",
+                    type=("wav", "mp3", "m4a", "mp4", "webm", "ogg"),
+                    key="voice-upload",
+                )
+                transcribe_voice = st.form_submit_button(
+                    "Transcribe with Cartesia"
+                )
         if transcribe_voice:
             audio = uploaded_audio if uploaded_audio is not None else voice_audio
             if audio is None:
                 st.error(
-                    "No recording was received. Stop the recording, or "
-                    "upload an audio file, then click Transcribe."
+                    "No recording was received. Check browser microphone "
+                    "permissions, upload a recording, or use the tap form below."
                 )
             else:
                 audio_type = (
