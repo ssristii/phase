@@ -131,6 +131,175 @@ def discard_audio_capture() -> None:
     st.session_state["audio_nonce"] = nonce + 1
 
 
+def run_moonrise_sequence(variant: str) -> None:
+    import time
+
+    if st.session_state.get("intro_skip"):
+        st.session_state["intro_skip"] = False
+        st.session_state["intro_pending"] = False
+        st.session_state.pop("intro_variant", None)
+        st.session_state["flow_step"] = "dashboard"
+        st.rerun()
+
+    from moonrise import moonrise_markup, moonrise_min_seconds
+
+    db = globals().get("database")
+    account_id = st.session_state.get("account_id")
+    min_seconds = moonrise_min_seconds(variant)
+
+    visual = st.empty()
+    style = st.empty()
+    status = st.empty()
+    skip_holder = st.empty()
+
+    visual.markdown(moonrise_markup(), unsafe_allow_html=True)
+    style.markdown("<style>:root{--lit:0;--shine:0}</style>", unsafe_allow_html=True)
+    status.markdown(
+        '<div aria-live="polite">Preparing your dashboard</div>',
+        unsafe_allow_html=True,
+    )
+
+    start = time.time()
+    deadline = start + 12.0
+    completed = 0
+    total_steps = 5
+
+    def advance():
+        nonlocal completed
+        completed += 1
+        lit = completed / total_steps
+        style.markdown(
+            f"<style>:root{{--lit:{lit:.3f};--shine:0}}</style>",
+            unsafe_allow_html=True,
+        )
+
+    def step_load():
+        if db is None or not account_id:
+            return
+        db.accounts.find_one({"_id": account_id})
+        rows = list_checkins(db.checkins, account_id)
+        st.session_state["_moonrise_history"] = rows
+        account = db.accounts.find_one({"_id": account_id})
+        st.session_state["_moonrise_profile"] = (
+            account.get("profile") if isinstance(account, dict) else {}
+        )
+
+    def step_cycle():
+        from models import build_cycle_model
+        from phase_engine import predict_cycle
+
+        profile = st.session_state.get("_moonrise_profile", {}) or {}
+        history = st.session_state.get("_moonrise_history", []) or []
+        tracking_mode = profile.get("cycle_tracking_mode", "unsure")
+        if tracking_mode is None:
+            tracking_mode = "unsure"
+        last_period_raw = profile.get("last_period_start")
+        last_period = (
+            date.fromisoformat(last_period_raw)
+            if last_period_raw and tracking_mode == "period_date"
+            else None
+        )
+        build_cycle_model(
+            history,
+            today=TODAY,
+            tracking_mode=tracking_mode,
+            last_period_start=last_period,
+        )
+        predict_cycle(
+            today=TODAY,
+            last_period_start=last_period,
+            unsure=tracking_mode != "period_date",
+            checkins=history,
+            tracking_mode=tracking_mode,
+        )
+
+    def step_readiness():
+        from models import default_readiness_weights, encode_readiness_features
+        from phase_engine import predict_readiness
+
+        profile = st.session_state.get("_moonrise_profile", {}) or {}
+        history = st.session_state.get("_moonrise_history", []) or []
+        weights = default_readiness_weights()
+        if db is not None and account_id:
+            try:
+                loaded = get_readiness_weights(db.model_weights, account_id)
+                if loaded is not None:
+                    weights = loaded
+            except Exception:
+                pass
+        today_checkin = None
+        if db is not None and account_id:
+            try:
+                today_checkin = get_checkin(db.checkins, account_id, TODAY)
+            except Exception:
+                today_checkin = None
+        if isinstance(today_checkin, dict):
+            features = encode_readiness_features(
+                sleep_hours=today_checkin.get("sleep_hours", 7),
+                energy=today_checkin.get("energy", 3),
+                pain=today_checkin.get("pain", 0),
+                mood=today_checkin.get("mood", "Okay"),
+                phase=None,
+            )
+            predict_readiness(weights, features)
+
+    def step_cache():
+        if db is None or not account_id:
+            return
+        try:
+            db.model_weights.find_one({"account_id": account_id})
+        except Exception:
+            pass
+        try:
+            list_checkins(db.checkins, account_id)
+        except Exception:
+            pass
+
+    def step_assemble():
+        st.session_state["_moonrise_ready"] = True
+
+    for step in (step_load, step_cycle, step_readiness, step_cache, step_assemble):
+        if time.time() > deadline:
+            break
+        try:
+            step()
+        except Exception:
+            pass
+        advance()
+
+    # Shine.
+    style.markdown("<style>:root{--lit:1;--shine:1}</style>", unsafe_allow_html=True)
+    status.markdown('<div aria-live="polite">Ready</div>', unsafe_allow_html=True)
+
+    # Skip appears after 1.5s total (best effort).
+    if time.time() - start < 1.5:
+        time.sleep(1.5 - (time.time() - start))
+    def _skip():
+        st.session_state["intro_skip"] = True
+
+    with skip_holder.container():
+        st.button("Skip", key="moonrise_skip_button", on_click=_skip)
+
+    time.sleep(1.0)
+    time.sleep(0.5)
+    remaining = min_seconds - (time.time() - start)
+    if remaining > 0:
+        time.sleep(remaining)
+
+    if time.time() > deadline:
+        status.markdown(
+            '<div aria-live="polite">Some things are still loading</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.session_state["intro_pending"] = False
+    st.session_state.pop("intro_variant", None)
+    for key in ("_moonrise_profile", "_moonrise_history", "_moonrise_ready"):
+        st.session_state.pop(key, None)
+    st.session_state["flow_step"] = "dashboard"
+    st.rerun()
+
+
 def discard_g1_audio() -> None:
     st.session_state.pop("voice_wav_bytes", None)
     st.session_state.pop("voice_wav_type", None)
@@ -231,6 +400,8 @@ def show_auth_page() -> None:
                         or profile.get("version") != PROFILE_VERSION
                         else "checkin"
                     )
+                    st.session_state["intro_pending"] = True
+                    st.session_state["intro_variant"] = "login"
                     st.rerun()
 
     with create_tab:
@@ -797,6 +968,8 @@ def show_daily_checkin(account) -> None:
         discard_g1_audio()
         st.session_state["_clear_checkin_state"] = True
         st.session_state["flow_step"] = "dashboard"
+        st.session_state["intro_pending"] = True
+        st.session_state["intro_variant"] = "checkin"
         st.rerun()
 
 
@@ -1197,7 +1370,12 @@ if (
     or profile.get("version") != PROFILE_VERSION
     or st.session_state.get("flow_step") == "profile"
 ):
+    st.session_state["intro_pending"] = False
     show_profile_setup(account)
+    st.stop()
+
+if st.session_state.get("intro_pending"):
+    run_moonrise_sequence(st.session_state.get("intro_variant", "login"))
     st.stop()
 
 if st.session_state.pop("_clear_checkin_state", False):
