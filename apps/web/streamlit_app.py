@@ -424,8 +424,8 @@ def show_voice_checkin() -> None:
             audio = uploaded_audio if uploaded_audio is not None else voice_audio
             if audio is None:
                 st.error(
-                    "No recording was received. Check browser microphone "
-                    "permissions, upload a recording, or use the tap form below."
+                    "No recording was received. Stop the recording, or "
+                    "upload an audio file, then click Transcribe."
                 )
             else:
                 audio_type = (
