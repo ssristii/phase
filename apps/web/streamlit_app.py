@@ -167,6 +167,8 @@ def run_moonrise_sequence(variant: str) -> None:
     skip_holder = st.empty()
 
     visual.markdown(moonrise_markup(), unsafe_allow_html=True)
+    st.session_state["_moonrise_loading"] = True
+    time.sleep(0.05)
     style.markdown("<style>:root{--lit:0;--shine:0}</style>", unsafe_allow_html=True)
     status.markdown(
         '<div aria-live="polite">Preparing your dashboard</div>',
@@ -306,6 +308,7 @@ def run_moonrise_sequence(variant: str) -> None:
             unsafe_allow_html=True,
         )
 
+    st.session_state.pop("_moonrise_loading", None)
     st.session_state["intro_pending"] = False
     st.session_state.pop("intro_variant", None)
     for key in ("_moonrise_profile", "_moonrise_history", "_moonrise_ready"):
@@ -323,7 +326,7 @@ def discard_g1_audio() -> None:
 st.set_page_config(
     page_title="Phase",
     page_icon=None,
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="collapsed",
 )
 # Streamlit 1.53.1 signature: st.markdown(body, *, unsafe_allow_html=False, help=None, width="stretch").
@@ -336,18 +339,6 @@ if "teardrop_positions" not in st.session_state:
 from theme import inject_theme, teardrop_layer_html
 inject_theme(st.session_state["star_positions"])
 st.markdown(teardrop_layer_html(st.session_state["teardrop_positions"]), unsafe_allow_html=True)
-st.markdown(
-    """
-    <div class="phase-brand" aria-label="Phase, a cycle-aware wellness guide">
-      <div class="phase-brand-title">PHASE</div>
-      <div class="phase-brand-divider"><span>◇</span></div>
-      <div class="phase-brand-subtitle">A cycle-aware guide, led by how you feel</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
 @st.cache_resource
 def connect_database(uri: str, database_name: str):
     client = MongoClient(uri, serverSelectionTimeoutMS=5000)
@@ -628,6 +619,56 @@ def show_voice_checkin() -> None:
                 type=("wav", "mp3", "m4a", "mp4", "webm", "ogg"),
                 key="voice-upload",
             )
+            st.components.v1.html(
+                r"""
+                <script>
+                const devMode = true;
+                async function recordVoice() {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+                    });
+                    const recorder = new MediaRecorder(stream);
+                    let chunks = [];
+                    let startedAt = 0;
+                    let level = 0;
+                    const audioContext = new AudioContext();
+                    const source = audioContext.createMediaStreamSource(stream);
+                    const analyser = audioContext.createAnalyser();
+                    source.connect(analyser);
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    let silentFor = 0;
+                    function meter() {
+                        analyser.getByteTimeDomainData(dataArray);
+                        let sum = 0;
+                        for (let i = 0; i < dataArray.length; i++) { const v = dataArray[i] - 128; sum += v * v; }
+                        level = Math.sqrt(sum / dataArray.length);
+                        if (level < 2) { silentFor += 100; } else { silentFor = 0; }
+                        if (silentFor >= 2000) { console.warn("I'm not hearing anything, check your mic."); }
+                        requestAnimationFrame(meter);
+                    }
+                    meter();
+                    recorder.onstart = () => { if (recorder.state === "recording") { startedAt = Date.now(); document.body.dataset.speakNow = "Speak now"; } };
+                    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+                    recorder.onstop = () => {
+                        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+                        const duration = Date.now() - startedAt;
+                        if (devMode) console.log('blob size', blob.size, 'duration', duration, 'mime type', blob.type);
+                        if (duration < 1000) { console.log('skip transcription: too short'); return; }
+                        // playback preview
+                        const url = URL.createObjectURL(blob);
+                        const audio = new Audio(url);
+                        // Playback preview: Use this / Re-record
+                        const useThis = 'Use this';
+                        const reRecord = 'Re-record';
+                        console.log(useThis, reRecord);
+                    };
+                    recorder.start();
+                    setTimeout(() => { recorder.requestData(); setTimeout(() => recorder.stop(), 400); }, 1000);
+                }
+                </script>
+                """,
+                height=0,
+            )
             transcribe_voice = st.button(
                 "Transcribe with Cartesia",
                 key="transcribe-voice",
@@ -646,6 +687,9 @@ def show_voice_checkin() -> None:
                 )
             else:
                 audio = voice_audio
+            if audio is not None and len(audio.getvalue()) < 32000:
+                st.error("Recording is too short to transcribe.")
+                audio = None
             if audio is None:
                 st.error(
                     "No recording was received. Stop the recording, or "
@@ -667,7 +711,17 @@ def show_voice_checkin() -> None:
                     with urlopen(request, timeout=45) as response:
                         payload = json.loads(response.read().decode("utf-8"))
                     transcript = payload.get("text")
-                    if not isinstance(transcript, str) or not transcript.strip():
+                    silence_hallucinations = {
+                        "thank you for your question",
+                        "thanks for watching",
+                        "thank you for watching",
+                    }
+                    if (
+                        not isinstance(transcript, str)
+                        or not transcript.strip()
+                        or transcript.strip().lower().rstrip(".")
+                        in silence_hallucinations
+                    ):
                         st.error(
                             "Cartesia returned an empty transcript. Try recording again."
                         )
@@ -796,6 +850,7 @@ def show_voice_checkin() -> None:
 
 
 def show_daily_checkin(account) -> None:
+    st.session_state.pop("_checkin_submitting", None)
     st.title("How are you feeling today?")
     st.write(
         "Your check-in leads. Cycle phase is only a starting estimate."
@@ -921,9 +976,19 @@ def show_daily_checkin(account) -> None:
             "I had a positive pregnancy test",
             key="checkin-pregnancy",
         )
-        submitted = st.form_submit_button("Continue to my dashboard")
+        submitted = st.form_submit_button(
+            "Continue to my dashboard",
+            disabled=bool(st.session_state.get("_checkin_submitting", False)),
+        )
 
     if submitted:
+        st.session_state["_checkin_submitting"] = True
+        st.session_state["_moonrise_loading"] = True
+        _loader = st.empty()
+        from moonrise import moonrise_markup as _moonrise_markup
+        _loader.markdown(_moonrise_markup(), unsafe_allow_html=True)
+        import time as _time
+        _time.sleep(0.05)
         values = {
             "flow": flow,
             "mood": mood,
@@ -967,17 +1032,6 @@ def show_daily_checkin(account) -> None:
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
             pass
         st.session_state["voice_readback_text"] = readback_text
-        try:
-            tts_request = Request(
-                "http://127.0.0.1:4000/api/cartesia/readback",
-                data=json.dumps({"transcript": readback_text}).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urlopen(tts_request, timeout=3.5) as response:
-                st.session_state["voice_readback_audio"] = response.read()
-        except (HTTPError, URLError, TimeoutError):
-            st.session_state.pop("voice_readback_audio", None)
         clear_voice_text()
         discard_audio_capture()
         discard_g1_audio()
@@ -1032,7 +1086,10 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                     st.session_state["intro_variant"] = "login"
                     st.session_state["flow_step"] = "dashboard"
                     st.rerun()
-                if st.button("New random data", key="demo_random"):
+                if (
+                    profile.get("cycle_tracking_mode") == "symptom"
+                    or profile.get("symptom_mode") is True
+                ) and st.button("New random data", key="demo_random"):
                     ensure_demo_account(database, seed=random.randint(1, 10_000), today=TODAY)
                     st.session_state["intro_pending"] = True
                     st.session_state["intro_variant"] = "login"
@@ -1102,14 +1159,38 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         cycle_lengths=cycle_state.valid_cycle_lengths,
     )
 
-    edit_checkin_col, sign_out_col = st.columns((1, 1))
-    if edit_checkin_col.button(
-        "Edit today's check-in",
-        key="outline_edit_checkin_top",
-    ):
+    brand_col, update_col, edit_col, sign_out_col = st.columns((2, 1, 1, 1))
+    with brand_col:
+        st.markdown(
+            '<div class="phase-header-brand">Phase</div>'
+            '<div class="phase-header-tagline">A cycle-aware guide, led by how you feel</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="phase-header-menu-marker"></div>', unsafe_allow_html=True)
+        with st.popover("Menu"):
+            if st.button("Update how I feel", key="menu_update_feel"):
+                st.session_state["flow_step"] = "checkin"
+                st.rerun()
+            if st.button("Edit today's check-in", key="menu_edit_checkin"):
+                st.session_state["flow_step"] = "checkin"
+                st.rerun()
+            if st.button("Sign out", type="tertiary", key="menu_sign_out"):
+                clear_voice_text()
+                discard_audio_capture()
+                for key in (
+                    "account_id",
+                    "flow_step",
+                    *CHECKIN_INPUT_KEYS,
+                ):
+                    st.session_state.pop(key, None)
+                st.rerun()
+    if update_col.button("Update how I feel", type="primary", key="header_update_feel"):
         st.session_state["flow_step"] = "checkin"
         st.rerun()
-    if sign_out_col.button("Sign out", key="outline_sign_out_top"):
+    if edit_col.button("Edit today's check-in", type="secondary", key="header_edit_checkin"):
+        st.session_state["flow_step"] = "checkin"
+        st.rerun()
+    if sign_out_col.button("Sign out", type="tertiary", key="header_sign_out"):
         clear_voice_text()
         discard_audio_capture()
         for key in (
@@ -1140,9 +1221,6 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 unsafe_allow_html=True,
             )
             st.write(readback_text)
-            audio_bytes = st.session_state.get("voice_readback_audio")
-            if isinstance(audio_bytes, (bytes, bytearray)) and audio_bytes:
-                st.audio(bytes(audio_bytes), format="audio/mp3")
     weekly_schedule = None
     locked_plan = None
     if not safety.suppress_plan:
@@ -1195,9 +1273,6 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 if prediction.population_default:
                     st.caption("Estimated from typical cycles.")
                 st.write(prediction.reason)
-        if st.button("Check in", key="today_check_in_pill"):
-            st.session_state["flow_step"] = "checkin"
-            st.rerun()
         with st.container(border=True):
             st.markdown("#### Today's check-in")
             c1, c2 = st.columns(2)
@@ -1238,8 +1313,6 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         with st.container(border=True):
             st.markdown("**Workout**")
             st.write("See the Train tab for today's session.")
-            st.markdown("**Meals**")
-            st.write("Meal ideas are planned in the meals tab.")
             st.markdown("**Recovery**")
             st.write("Rest, hydration, and gentle mobility.")
         st.markdown("#### Phase hearts")
@@ -1249,11 +1322,6 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 with st.container(border=True):
                     st.caption(name)
                     st.markdown("&#9829;")
-        st.button(
-            "Update how I feel",
-            on_click=lambda: st.session_state.update({"flow_step": "checkin"}),
-            key="update_feel_today",
-        )
 
     with workout_tab:
         st.subheader("Your training week")

@@ -314,16 +314,13 @@ def _seed_demo_data(database, account_id: str, *, seed: int = 42, today: date | 
     # fixed to one part of the cycle. Generate observed cycle lengths first, then
     # derive the current cycle length and day from them so phase estimates stay
     # consistent with the seeded history.
-    observed_lengths = [rng.randint(24, 34) for _ in range(5)]
+    # Six regular cycles, each 26-30 days, so the moon wheel and phase labels
+    # always have a usable history. Last period was about 14 days ago.
+    observed_lengths = [rng.randint(26, 30) for _ in range(6)]
     observed_average = sum(observed_lengths) / len(observed_lengths)
-    current_length = max(24, min(35, int(round(observed_average + rng.uniform(-2, 2)))))
+    current_length = max(26, min(30, int(round(observed_average))))
     ovulation_day = max(8, min(current_length - 10, current_length - 14))
-    # Choose today's cycle day uniformly from the current cycle, then nudge it
-    # toward a non-luteal phase when the random draw lands in luteal so the
-    # demo does not always open in the same phase.
-    today_cycle_day = rng.randrange(1, current_length + 1)
-    if today_cycle_day > ovulation_day + 1 and rng.random() < 0.65:
-        today_cycle_day = rng.randrange(1, ovulation_day + 2)
+    today_cycle_day = 14
     cycle_lengths = [current_length] + observed_lengths
     bleed_lengths = [rng.randint(4, 6) for _ in cycle_lengths]
     last_period = today - timedelta(days=today_cycle_day - 1)

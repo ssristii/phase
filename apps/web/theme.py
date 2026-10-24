@@ -155,6 +155,59 @@ def inject_theme(star_positions):
             padding-top: .75rem !important;
             padding-bottom: 5rem !important;
         }
+        [data-testid="stVerticalBlock"]:has(.phase-header-brand) {
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(.phase-header-brand) {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            gap: 12px !important;
+            width: 100% !important;
+        }
+        .phase-header-brand {
+            font-family: "Cormorant Garamond", Georgia, serif !important;
+            font-size: 1.6rem !important;
+            font-weight: 700 !important;
+            letter-spacing: .08em !important;
+            color: var(--pale-gold) !important;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .phase-header-tagline {
+            font-size: .8rem;
+            color: var(--text-muted, #888);
+            white-space: nowrap;
+        }
+        [data-testid="stHorizontalBlock"]:has(.phase-header-brand) .stButton button,
+        [data-testid="stHorizontalBlock"]:has(.phase-header-brand) button {
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        [data-testid="stVerticalBlock"]:has(.phase-header-menu-marker) {
+            display: none;
+        }
+        @media (max-width: 640px) {
+            [data-testid="stHorizontalBlock"]:has(.phase-header-brand) > [data-testid="column"]:nth-child(n+2) {
+                display: none !important;
+            }
+            [data-testid="stVerticalBlock"]:has(.phase-header-menu-marker) {
+                display: block !important;
+            }
+        }
+        @media (min-width: 641px) {
+            [data-testid="stVerticalBlock"]:has(.phase-header-menu-marker) {
+                display: none !important;
+            }
+        }
+        .phase-nav-separator {
+            display: inline-block;
+            width: 1px;
+            height: 1.5rem;
+            background: var(--border-gold);
+            margin: 0 .5rem;
+        }
         @media (prefers-reduced-motion: reduce) {
             .phase-star, .phase-ripple, .phase-pulse, .phase-drift { animation: none !important; }
         }

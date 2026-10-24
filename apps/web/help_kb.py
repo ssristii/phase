@@ -1,7 +1,7 @@
 """Local 'What might help' knowledge base (Moss cut-ladder fallback).
 
 Evidence chips must read exactly Established, Emerging, or Traditional.
-Ayurveda/TCM entries are food and lifestyle only: no herbs, supplements, or dosing.
+Ayurveda/TCM entries are lifestyle only: no herbs, supplements, or dosing.
 """
 
 from __future__ import annotations
@@ -82,10 +82,10 @@ HELP_ENTRIES: tuple[HelpEntry, ...] = (
         phase="Menstrual",
         lens="Ayurveda",
         symptom="Bloating",
-        title="Warm, easy-to-digest meals",
+        title="Warm, easy-to-digest comfort",
         body=(
-            "Traditional guidance favors warm, simple cooked meals and "
-            "steady hydration. This is lifestyle framing only."
+            "Traditional guidance favors warm, simple, easy-to-digest "
+            "choices and steady hydration. This is lifestyle framing only."
         ),
         evidence="Traditional",
         source_domain="nccih.nih.gov",
@@ -144,7 +144,7 @@ HELP_ENTRIES: tuple[HelpEntry, ...] = (
         symptom="Mood",
         title="Steady daily rhythm",
         body=(
-            "A consistent sleep and meal rhythm supports mood on most days."
+            "A consistent sleep rhythm supports mood on most days."
         ),
         evidence="Emerging",
         source_domain="nih.gov",
@@ -199,9 +199,9 @@ HELP_ENTRIES: tuple[HelpEntry, ...] = (
         phase="All days",
         lens="TCM",
         symptom="Bloating",
-        title="Warm foods and calm evenings",
+        title="Warm evenings and calm routine",
         body=(
-            "Traditional lifestyle advice favors warm foods and a calm evening. "
+            "Traditional lifestyle advice favors warmth and a calm evening. "
             "No herbs or dosing are suggested here."
         ),
         evidence="Traditional",
