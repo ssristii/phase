@@ -291,7 +291,12 @@ def _clear_demo_data(database, account_id: str) -> None:
         database.model_weights,
     ):
         for document in list(collection.find({"account_id": account_id})):
-            collection.delete_one({"_id": document["_id"]})
+            query = {"account_id": account_id}
+            for key in ("checkin_date", "phase", "model"):
+                if key in document:
+                    query[key] = document[key]
+            collection.delete_one(query)
+
 
 
 def _seed_demo_data(database, account_id: str, *, seed: int = 42, today: date | None = None) -> None:

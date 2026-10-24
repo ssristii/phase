@@ -7,6 +7,8 @@ the browser prototype open and exercise the full flow without MongoDB Atlas.
 from __future__ import annotations
 
 from copy import deepcopy
+from uuid import uuid4
+
 
 
 class MemoryCollection:
@@ -17,7 +19,11 @@ class MemoryCollection:
         return None
 
     def insert_one(self, document):
-        self.documents.append(deepcopy(document))
+        stored = deepcopy(document)
+        if "_id" not in stored:
+            stored["_id"] = str(uuid4())
+        self.documents.append(stored)
+
 
     def find(self, query=None, projection=None):
         query = query or {}
@@ -43,12 +49,23 @@ class MemoryCollection:
 
     def replace_one(self, query, replacement, upsert=False):
         query = query or {}
+        stored_replacement = deepcopy(replacement)
         for index, document in enumerate(self.documents):
             if all(document.get(key) == value for key, value in query.items()):
-                self.documents[index] = deepcopy(replacement)
+                if "_id" not in stored_replacement and "_id" in document:
+                    stored_replacement["_id"] = document["_id"]
+                if "_id" not in stored_replacement:
+                    stored_replacement["_id"] = str(uuid4())
+                self.documents[index] = stored_replacement
                 return
         if upsert:
-            self.documents.append(deepcopy(replacement))
+            if "_id" not in stored_replacement:
+                if "_id" in query:
+                    stored_replacement["_id"] = query["_id"]
+                else:
+                    stored_replacement["_id"] = str(uuid4())
+            self.documents.append(stored_replacement)
+
 
     def update_one(self, query, update, upsert=False):
         query = query or {}
@@ -60,7 +77,9 @@ class MemoryCollection:
         if index is None:
             if not upsert:
                 return
-            document = dict(query)
+            document = deepcopy(query)
+            if "_id" not in document:
+                document["_id"] = str(uuid4())
             self.documents.append(document)
             index = len(self.documents) - 1
         document = self.documents[index]
@@ -69,6 +88,9 @@ class MemoryCollection:
         if "$setOnInsert" in (update or {}):
             for key, value in update["$setOnInsert"].items():
                 document.setdefault(key, deepcopy(value))
+        if "_id" not in document:
+            document["_id"] = str(uuid4())
+
 
     def update_many(self, query, update):
         query = query or {}
