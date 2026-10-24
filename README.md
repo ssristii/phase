@@ -10,7 +10,32 @@ Streamlit and Python, with an optional Express sponsor API and MongoDB.
 - Node.js 18+ Express API for sponsor integrations (Gemini, Cartesia)
 - React Native / Expo mobile app (deferred)
 
-## Project layout
+## Technical details
+
+Cadence's cycle and readiness estimates run locally in Python. They are small,
+per-user online models, not pretrained or deep-learning models.
+
+- **M1 (cycle length and bleed length):** Bayesian Normal-Inverse-Gamma
+  posteriors with exponential forgetting (gamma 0.92). It starts from a
+  28-day cycle / 5-day bleed prior and updates from reported period starts.
+  Cycle phase is derived from the predicted cycle length with a fixed 14-day
+  luteal tail; ovulation day and a fertile window are estimated for
+  orientation only and are never shown as a fertility guarantee.
+- **M2 (readiness):** online logistic regression with ridge pull toward a
+  hand-set prior and clipped weights. It combines sleep, energy, pain, mood,
+  and phase one-hot features to classify "too much" load and scales the
+  training plan (as planned / reduce / recovery).
+- **Why this approach:** per-user Bayesian/logistic models need little data,
+  update incrementally from check-ins, stay interpretable and auditable, and
+  keep health-relevant inference on the user's own device/session instead of a
+  shared model. Fixed safety rules (escalations) are never delegated to the
+  learned models.
+- **Safety:** deterministic escalation checks (no period 90 days, repeated high
+  pain, heavy flow streaks, persistently irregular cycles, positive pregnancy
+  test) suppress generated plans and prompt clinician contact.
+- **Storage:** MongoDB when `MONGODB_URI` is set; otherwise an in-memory store
+  for the session. PDF export is dependency-free and contains computed stats
+  plus a "Self-reported data" label.
 
 ```
 apps/web        Streamlit prototype (Python)
@@ -79,7 +104,7 @@ npm test
 
 ## Troubleshooting
 
-- "No MONGODB_URI set..." warning: expected when running without MongoDB.
+- Data storage warning: expected when running without a database.
   Data resets on restart. Set `MONGODB_URI` in `apps/web/.env` for persistence.
 - Login not working after creating an account: ensure you are running the
   latest code; the in-memory store is cached per process so accounts survive

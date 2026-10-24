@@ -156,6 +156,7 @@ st.markdown(
     }
     .stApp, [data-testid="stAppViewContainer"] {
         background:
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"),
             radial-gradient(ellipse at 50% 0%, rgba(243, 229, 171, 0.52), transparent 58%),
             radial-gradient(ellipse at 50% 100%, rgba(110, 91, 84, 0.10), transparent 62%),
             var(--parchment);
@@ -247,6 +248,28 @@ st.markdown(
         border: 1px solid var(--gold) !important;
         border-radius: 1.15rem !important;
         box-shadow: 0 10px 25px rgba(43, 27, 23, 0.17), inset 0 1px rgba(243, 229, 171, 0.08);
+        position: relative;
+        overflow: visible;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]::before,
+    [data-testid="stVerticalBlockBorderWrapper"]::after {
+        position: absolute;
+        color: var(--gold);
+        font-size: 1.1rem;
+        opacity: 0.75;
+        line-height: 1;
+        pointer-events: none;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]::before {
+        content: "❧";
+        top: 0.4rem;
+        left: 0.65rem;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]::after {
+        content: "❧";
+        bottom: 0.4rem;
+        right: 0.65rem;
+        transform: rotate(180deg);
     }
     [data-testid="stVerticalBlockBorderWrapper"] p,
     [data-testid="stVerticalBlockBorderWrapper"] li,
@@ -419,9 +442,18 @@ st.markdown(
         border-radius: 50%;
         display: grid;
         place-items: center;
+        position: relative;
         box-shadow: 0 8px 22px rgba(43, 27, 23, 0.23), 0 0 0 5px rgba(212, 175, 55, 0.24);
     }
+    .phase-wheel svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+    }
     .phase-wheel-center {
+        position: relative;
+        z-index: 1;
         width: 58%;
         height: 58%;
         border-radius: 50%;
@@ -488,7 +520,7 @@ st.markdown(
     [data-testid="stSegmentedControl"] button {
         border-radius: 999px !important;
         border: 1.5px solid var(--gold) !important;
-        color: var(--cherry) !important;
+        color: #7A4A52 !important;
         background: rgba(243, 233, 210, 0.7) !important;
         font-weight: 700;
     }
@@ -1115,36 +1147,39 @@ def show_daily_checkin(account) -> None:
         st.rerun()
 
 
-def phase_wheel(phase: str | None) -> None:
-    colors = ("#9B1B30", "#C9A24B", "#D5B78A", "#5A0F1C")
-    if phase not in PHASES:
-        colors = ("#D5B78A",) * 4
+def phase_wheel(phase: str | None, cycle_day: int | None = None, cycle_length: float | None = None) -> None:
+    estimated_length = int(round(cycle_length)) if cycle_length else 28
+    if estimated_length < 15:
+        estimated_length = 28
+    if cycle_day is None:
+        progress = 0.0
     else:
-        active = PHASES.index(phase)
-        colors = tuple(
-            "#9B1B30" if index == active else colors[index]
-            for index in range(len(PHASES))
-        )
-    stops = []
-    for index, color in enumerate(colors):
-        start = index * 90
-        end = start + 86
-        stops.append(f"{color} {start}deg {end}deg")
-        stops.append(f"#F3E9D2 {end}deg {(index + 1) * 90}deg")
-    gradient = ", ".join(stops)
+        progress = min(max(cycle_day / estimated_length, 0.0), 1.0)
+    circumference = 2 * 3.14159265 * 84
+    dash = progress * circumference
+    gap = circumference - dash
     center = phase or "No phase"
-    subtitle = "estimated phase" if phase else "symptom guidance"
+    if cycle_day is not None:
+        subtitle = f"Day {cycle_day} of {estimated_length}"
+    else:
+        subtitle = "symptom guidance"
     description = (
-        f"{phase} is highlighted."
-        if phase
-        else "No cycle phase is estimated."
+        f"{phase} is highlighted on day {cycle_day} of an estimated "
+        f"{estimated_length}-day cycle."
+        if phase and cycle_day is not None
+        else ("No cycle phase is estimated." if phase is None else f"{phase} is highlighted.")
     )
     st.markdown(
         f"""
-        <div class="phase-wheel"
-             style="background: conic-gradient(from -45deg, {gradient});"
-             role="img"
-             aria-label="Four-part cycle phase wheel. {description}">
+        <div class="phase-wheel" role="img" aria-label="{description}">
+          <svg viewBox="0 0 200 200" width="100%" height="100%">
+            <circle cx="100" cy="100" r="84" fill="none" stroke="#E8DDC9" stroke-width="14"/>
+            <circle cx="100" cy="100" r="84" fill="none" stroke="#9B1B30" stroke-width="14"
+                    stroke-linecap="round"
+                    stroke-dasharray="{dash:.1f} {gap:.1f}"
+                    transform="rotate(-90 100 100)"/>
+            <circle cx="100" cy="100" r="62" fill="#F3E9D2" stroke="#C9A24B" stroke-width="2"/>
+          </svg>
           <div class="phase-wheel-center">{center}<small>{subtitle}</small></div>
         </div>
         <div class="phase-legend">
@@ -1153,10 +1188,15 @@ def phase_wheel(phase: str | None) -> None:
         """,
         unsafe_allow_html=True,
     )
-    st.caption(
-        "Four equal visual sections for orientation only; this wheel is not "
-        "a time-scale or fertility chart."
-    )
+    if cycle_day is not None:
+        st.caption(
+            f"Day {cycle_day} of an estimated {estimated_length}-day cycle. "
+            "This is an orientation view, not a time-scale or fertility chart."
+        )
+    else:
+        st.caption(
+            "Cycle timing is not estimated in symptom-based mode."
+        )
 
 
 def show_dashboard(account, profile: dict, checkin: dict) -> None:
@@ -1278,7 +1318,11 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 st.caption("Cycle timing is hidden in symptom-based mode.")
                 st.info(prediction.reason)
             else:
-                phase_wheel(prediction.phase)
+                phase_wheel(
+                    prediction.phase,
+                    cycle_day=prediction.cycle_day,
+                    cycle_length=prediction.predicted_length,
+                )
                 st.subheader(f"Estimated phase: {prediction.phase}")
                 if prediction.population_default:
                     st.caption("Estimated from typical cycles.")
@@ -1327,9 +1371,8 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                     else:
                         st.write(
                             f"{', '.join(item['exercises'])} · {item['sets']} "
-                            f"sets · {item['reps']} · rest 60 to 90 seconds."
+                            f"sets · {item['reps']}."
                         )
-                    st.caption(f"Why this fits: {item['reason']}")
             if prediction.phase:
                 if not locked_plan:
                     if st.button("Heart this workout", key="heart-workout"):
@@ -1384,8 +1427,6 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 st.markdown(f"### {entry.title}")
                 st.write(entry.body)
                 st.caption(f"Evidence: {entry.evidence}")
-                st.caption(f"Source: {entry.source_domain}")
-                st.caption(f"Retrieved {entry.retrieved_at}")
 
     with report_tab:
         st.subheader("Appointment report")
@@ -1431,9 +1472,9 @@ mongo_uri = os.getenv("MONGODB_URI", "").strip()
 database_name = (os.getenv("MONGODB_DATABASE") or "phase").strip() or "phase"
 if not mongo_uri:
     st.warning(
-        "Running without MongoDB: accounts, check-ins, and phase hearts are "
-        "stored in memory and reset when the app restarts. Set MONGODB_URI in "
-        "apps/web/.env for persistent storage."
+        "Data storage: without a database connection, your account, check-ins, and "
+        "phase hearts stay in this session and reset when the app restarts. "
+        "To keep them, set MONGODB_URI in apps/web/.env."
     )
     database = connect_in_memory_cached(database_name)
     if database is None:
