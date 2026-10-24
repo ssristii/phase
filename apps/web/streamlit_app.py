@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import io
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -125,6 +126,8 @@ def discard_audio_capture() -> None:
     nonce = int(st.session_state.get("audio_nonce", 0))
     st.session_state.pop(f"audio_{nonce}", None)
     st.session_state.pop("voice-upload", None)
+    st.session_state.pop("captured_voice_audio_bytes", None)
+    st.session_state.pop("captured_voice_audio_type", None)
     st.session_state["audio_nonce"] = nonce + 1
 
 
@@ -405,23 +408,49 @@ def show_voice_checkin() -> None:
                     unsafe_allow_html=True,
                 )
             # Streamlit 1.53.1 signature: audio_input(label, *, sample_rate=16000, key=None, help=None, on_change=None, args=None, kwargs=None, disabled=False, label_visibility="visible", width="stretch").
-            with st.form("voice-checkin-form"):
-                voice_audio = st.audio_input(
-                    "Record your check-in",
-                    sample_rate=16000,
-                    key=f"audio_{int(st.session_state.get('audio_nonce', 0))}",
-                    help="Your browser may ask for microphone access.",
+            def _capture_recorded_audio() -> None:
+                recorded = st.session_state.get(
+                    f"audio_{int(st.session_state.get('audio_nonce', 0))}"
                 )
-                uploaded_audio = st.file_uploader(
-                    "Or upload an audio file",
-                    type=("wav", "mp3", "m4a", "mp4", "webm", "ogg"),
-                    key="voice-upload",
-                )
-                transcribe_voice = st.form_submit_button(
-                    "Transcribe with Cartesia"
-                )
+                if recorded is not None:
+                    st.session_state["captured_voice_audio_bytes"] = recorded.getvalue()
+                    st.session_state["captured_voice_audio_type"] = getattr(
+                        recorded, "type", "audio/wav"
+                    )
+
+            # Keep captured bytes in sync even if on_change is deferred.
+            _capture_recorded_audio()
+
+            voice_audio = st.audio_input(
+                "Record your check-in",
+                sample_rate=16000,
+                key=f"audio_{int(st.session_state.get('audio_nonce', 0))}",
+                help="Your browser may ask for microphone access.",
+                on_change=_capture_recorded_audio,
+            )
+            uploaded_audio = st.file_uploader(
+                "Or upload an audio file",
+                type=("wav", "mp3", "m4a", "mp4", "webm", "ogg"),
+                key="voice-upload",
+            )
+            transcribe_voice = st.button(
+                "Transcribe with Cartesia",
+                key="transcribe-voice",
+            )
+            if voice_audio is not None:
+                st.caption("Recording ready. Click Transcribe with Cartesia.")
+            if uploaded_audio is not None:
+                st.caption("Uploaded file ready. Click Transcribe with Cartesia.")
         if transcribe_voice:
-            audio = uploaded_audio if uploaded_audio is not None else voice_audio
+            if uploaded_audio is not None:
+                audio = uploaded_audio
+            elif st.session_state.get("captured_voice_audio_bytes") is not None:
+                audio = io.BytesIO(st.session_state["captured_voice_audio_bytes"])
+                audio.type = st.session_state.get(
+                    "captured_voice_audio_type", "audio/wav"
+                )
+            else:
+                audio = voice_audio
             if audio is None:
                 st.error(
                     "No recording was received. Stop the recording, or "
