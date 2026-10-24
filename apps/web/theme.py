@@ -1,4 +1,4 @@
-﻿"""Cadence theme."""
+"""Cadence theme."""
 
 from __future__ import annotations
 
@@ -179,3 +179,105 @@ def inject_theme(star_positions):
         """,
         unsafe_allow_html=True,
     )
+
+def teardrop_positions_for_session() -> list[dict]:
+    import random
+
+    rng = random.Random(20260425)
+    colors = [
+        "rgba(201,162,75,.35)",
+        "rgba(231,135,154,.30)",
+        "rgba(196,43,72,.30)",
+        "rgba(233,212,154,.28)",
+        "rgba(232,160,122,.28)",
+    ]
+    shapes = []
+    for index in range(6):
+        color = colors[index % len(colors)]
+        width = round(150.0 + rng.random() * 570.0, 1)
+        left = rng.choice((rng.uniform(-12.0, 8.0), rng.uniform(84.0, 108.0)))
+        top = rng.choice((rng.uniform(-16.0, 10.0), rng.uniform(82.0, 110.0)))
+        rotation = round(rng.uniform(-35.0, 160.0), 1)
+        blur = round(2.0 + rng.random() * 4.0, 1)
+        opacity = round(0.12 + rng.random() * 0.23, 3)
+        duration = round(20.0 + rng.random() * 10.0, 1)
+        delay = round(rng.random() * 10.0, 2)
+        shapes.append(
+            {
+                "color": color,
+                "width": width,
+                "left": left,
+                "top": top,
+                "rotation": rotation,
+                "blur": blur,
+                "opacity": opacity,
+                "duration": duration,
+                "delay": delay,
+            }
+        )
+    return shapes
+
+
+def teardrop_layer_html(positions) -> str:
+    drops = []
+    for index, shape in enumerate(positions):
+        gradient_id = f"teardrop-gradient-{index}"
+        drops.append(
+            f"""
+            <div class="phase-teardrop" style="
+                left:{shape['left']:.2f}%;
+                top:{shape['top']:.2f}%;
+                width:{shape['width']:.1f}px;
+                height:{shape['width'] * 1.25:.1f}px;
+                transform:rotate({shape['rotation']:.1f}deg);
+                filter:blur({shape['blur']:.1f}px);
+                opacity:{shape['opacity']:.3f};">
+              <div class="phase-teardrop-inner" style="
+                width:100%;
+                height:100%;
+                animation:phase-teardrop-drift {shape['duration']:.1f}s ease-in-out {shape['delay']:.2f}s infinite alternate;
+                will-change:transform;">
+                <svg viewBox="0 0 100 125" width="100%" height="100%" aria-hidden="true" focusable="false">
+                <defs>
+                  <linearGradient id="{gradient_id}" x1="50" y1="125" x2="50" y2="0" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="{shape['color']}" stop-opacity="1"/>
+                    <stop offset="100%" stop-color="{shape['color']}" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M50 0 C50 0 100 55 100 75 A50 50 0 0 1 0 75 C0 55 50 0 50 0 Z" fill="url(#{gradient_id})"/>
+              </svg>
+            </div>
+            """
+        )
+    css = """
+    <style>
+    .phase-teardrops {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        overflow: hidden;
+    }
+    .phase-starfield {
+        z-index: 1 !important;
+    }
+    [data-testid="stAppViewContainer"] {
+        position: relative;
+        z-index: 2;
+    }
+    .phase-teardrop {
+        position: absolute;
+        transform-origin: center;
+    }
+    @keyframes phase-teardrop-drift {
+        0% { transform: translate(0, 0); }
+        50% { transform: translate(8px, -6px); }
+        100% { transform: translate(-6px, 8px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .phase-teardrop { animation: none !important; }
+    }
+    </style>
+    """
+    return css + '<div class="phase-teardrops" aria-hidden="true">' + "".join(drops) + "</div>"
+

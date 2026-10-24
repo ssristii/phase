@@ -147,8 +147,12 @@ st.set_page_config(
 if "star_positions" not in st.session_state:
     from theme import star_positions_for_session
     st.session_state["star_positions"] = star_positions_for_session()
-from theme import inject_theme
+if "teardrop_positions" not in st.session_state:
+    from theme import teardrop_positions_for_session
+    st.session_state["teardrop_positions"] = teardrop_positions_for_session()
+from theme import inject_theme, teardrop_layer_html
 inject_theme(st.session_state["star_positions"])
+st.markdown(teardrop_layer_html(st.session_state["teardrop_positions"]), unsafe_allow_html=True)
 st.markdown(
     """
     <div class="phase-brand" aria-label="Cadence, a cycle-aware wellness guide">
