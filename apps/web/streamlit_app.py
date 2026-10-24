@@ -87,7 +87,13 @@ def clear_voice_text() -> None:
     st.session_state.pop("voice_transcribed", None)
 
 
-st.set_page_config(page_title="Phase", page_icon=None, layout="centered")
+# Streamlit 1.53.1 signature: set_page_config(page_title, page_icon, layout, initial_sidebar_state, menu_items).
+st.set_page_config(
+    page_title="Cadence",
+    page_icon=None,
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
 st.markdown(
     """
     <style>
@@ -113,8 +119,12 @@ st.markdown(
         background: var(--parchment) !important;
         color: var(--espresso) !important;
     }
-    [data-testid="stHeader"] button {
-        color: var(--cherry) !important;
+    header, #MainMenu, footer, [data-testid="stToolbar"],
+    [data-testid="stDeployButton"] { display: none !important; }
+    [data-testid="stMainBlockContainer"] {
+        max-width: 560px !important;
+        padding-top: 1.5rem !important;
+        padding-bottom: 2rem !important;
     }
     [data-testid="stSidebar"] {
         background: linear-gradient(160deg, #F3E5AB, var(--parchment) 55%, #E8DDC9);
@@ -214,8 +224,7 @@ st.markdown(
     [data-testid="stAlert"] [data-testid="stMarkdownContainer"] {
         color: var(--espresso) !important;
     }
-    div.stButton > button, div.stFormSubmitButton > button,
-    [data-testid="stAudioInput"] button {
+    div.stButton > button, div.stFormSubmitButton > button {
         position: relative;
         overflow: hidden;
         background:
@@ -246,18 +255,24 @@ st.markdown(
     }
     div.stButton > button:hover::after,
     div.stFormSubmitButton > button:hover::after { left: 115%; }
-    div.stButton > button:hover, div.stFormSubmitButton > button:hover,
-    [data-testid="stAudioInput"] button:hover {
+    div.stButton > button:hover, div.stFormSubmitButton > button:hover {
         color: #FFFFFF !important;
         border-color: var(--champagne) !important;
         filter: brightness(1.08);
         transform: translateY(-2px);
         box-shadow: 0 11px 20px -2px rgba(43, 27, 23, 0.38), inset 0 -3px 6px rgba(0, 0, 0, 0.35);
     }
-    div.stButton > button:active, div.stFormSubmitButton > button:active,
-    [data-testid="stAudioInput"] button:active {
+    div.stButton > button:active, div.stFormSubmitButton > button:active {
         transform: scale(0.96) translateY(2px);
         box-shadow: 0 3px 7px rgba(43, 27, 23, 0.3), inset 0 -2px 5px rgba(0, 0, 0, 0.42);
+    }
+    .st-key-outline_clear_transcript button,
+    .st-key-outline_edit_checkin_top button,
+    .st-key-outline_sign_out_top button {
+        background: rgba(247, 242, 231, 0.75) !important;
+        color: var(--cherry) !important;
+        border: 1.5px solid var(--gold) !important;
+        box-shadow: 0 3px 8px rgba(43, 27, 23, 0.12) !important;
     }
     [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
         width: 32px !important;
@@ -298,7 +313,13 @@ st.markdown(
         border: 1px solid var(--gold) !important;
         border-radius: 999px !important;
     }
-    [data-testid="stAudioInput"] button { min-height: 2.7rem; }
+    .st-key-card_voice_transcript {
+        background: var(--mahogany) !important;
+        border: 1.5px solid var(--gold);
+        border-radius: 1.25rem;
+        padding: 0.5rem 0.8rem;
+        overflow: visible !important;
+    }
     [data-testid="stTabs"] [role="tab"] {
         color: var(--taupe) !important;
         font-family: "Cormorant Garamond", "Palatino Linotype", Georgia, serif;
@@ -376,8 +397,8 @@ st.markdown(
 )
 st.markdown(
     """
-    <div class="phase-brand" aria-label="Phase, a cycle-aware wellness guide">
-      <div class="phase-brand-title">PHASE</div>
+    <div class="phase-brand" aria-label="Cadence, a cycle-aware wellness guide">
+      <div class="phase-brand-title">CADENCE</div>
       <div class="phase-brand-divider"><span>◇</span></div>
       <div class="phase-brand-subtitle">A cycle-aware guide, led by how you feel</div>
     </div>
@@ -405,11 +426,11 @@ def connect_database(uri: str, database_name: str):
 
 
 def show_auth_page() -> None:
-    st.title("Phase")
+    st.title("Cadence")
     st.write("A cycle-aware plan that starts with how you feel today.")
     st.subheader("Your account")
     st.write(
-        "No email, phone number, or password. Phase creates a private 10-character "
+        "No email, phone number, or password. Cadence creates a private 10-character "
         "code for sign-in. Save it somewhere safe; if it is lost, the account "
         "and its data cannot be recovered."
     )
@@ -566,17 +587,26 @@ def show_voice_checkin() -> None:
         clear_voice_text()
 
     with st.expander("Voice check-in (record, then upload)", expanded=True):
-        transcript_heading, clear_transcript = st.columns(
-            (3, 1),
-            vertical_alignment="center",
-        )
-        transcript_heading.markdown("#### Transcript")
-        if clear_transcript.button("Clear", key="clear-voice-text-always"):
-            st.session_state["_clear_voice_text"] = True
-            st.session_state["_clear_voice_capture"] = True
-            st.rerun()
-        if "voice_transcript" not in st.session_state:
-            st.caption("Your transcript appears after the recording is sent.")
+        # Streamlit 1.53.1 signature: container(*, border=None, key=None, width="stretch", height="content", horizontal=False, horizontal_alignment="left", vertical_alignment="top", gap="small").
+        with st.container(border=True, key="card_voice_transcript"):
+            transcript_heading, clear_transcript = st.columns(
+                (3, 1),
+                vertical_alignment="center",
+            )
+            transcript_heading.markdown("#### Transcript")
+            if clear_transcript.button("Clear", key="outline_clear_transcript"):
+                st.session_state["_clear_voice_text"] = True
+                st.session_state["_clear_voice_capture"] = True
+                st.rerun()
+            if "voice_transcript" not in st.session_state:
+                st.caption("Your transcript appears after the recording is sent.")
+            elif st.session_state["voice_transcript"]:
+                st.text_area(
+                    "Editable transcript",
+                    key="voice_transcript",
+                    height=120,
+                    on_change=clean_voice_transcript,
+                )
         st.write(
             "Record up to 60 seconds. Say how your flow, mood, energy, sleep, "
             "pain, and workout are going."
@@ -591,6 +621,7 @@ def show_voice_checkin() -> None:
             "recording fails, upload an audio file or use the tap form below."
         )
         with st.form("voice-checkin-form"):
+            # Streamlit 1.53.1 signature: audio_input(label, *, sample_rate=16000, key=None, help=None, on_change=None, args=None, kwargs=None, disabled=False, label_visibility="visible", width="stretch").
             voice_audio = st.audio_input(
                 "Record your check-in",
                 sample_rate=16000,
@@ -657,18 +688,16 @@ def show_voice_checkin() -> None:
                         "The transcription request timed out or returned invalid JSON."
                     )
 
+        if "voice_transcript" in st.session_state and not st.session_state.get(
+            "voice_transcript"
+        ):
+            st.session_state.pop("voice_transcript", None)
         if "voice_transcript" in st.session_state:
             if st.session_state.pop("voice_transcribed", False):
                 st.success(
                     "Review and correct the transcript before extracting "
                     "check-in values."
                 )
-            st.text_area(
-                "Editable transcript",
-                key="voice_transcript",
-                height=120,
-                on_change=clean_voice_transcript,
-            )
             st.caption(
                 "Remove your name or identifying details before extraction. "
                 "The transcript is temporary and is not saved to your account."
@@ -947,26 +976,28 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         positive_pregnancy_test=checkin["positive_pregnancy_test"],
     )
 
-    with st.sidebar:
-        st.caption("Signed in with your private code.")
-        if st.button("Sign out"):
-            for key in (
-                "account_id",
-                "flow_step",
-                "voice_transcript",
-                "voice_extracted",
-                "voice_transcribed",
-                "voice-recording",
-                "voice-upload",
-                *CHECKIN_INPUT_KEYS,
-            ):
-                st.session_state.pop(key, None)
-            st.rerun()
-        if st.button("Edit today's check-in"):
-            st.session_state["flow_step"] = "checkin"
-            st.rerun()
+    edit_checkin_col, sign_out_col = st.columns((1, 1))
+    if edit_checkin_col.button(
+        "Edit today's check-in",
+        key="outline_edit_checkin_top",
+    ):
+        st.session_state["flow_step"] = "checkin"
+        st.rerun()
+    if sign_out_col.button("Sign out", key="outline_sign_out_top"):
+        for key in (
+            "account_id",
+            "flow_step",
+            "voice_transcript",
+            "voice_extracted",
+            "voice_transcribed",
+            "voice-recording",
+            "voice-upload",
+            *CHECKIN_INPUT_KEYS,
+        ):
+            st.session_state.pop(key, None)
+        st.rerun()
 
-    st.title("Your Phase dashboard")
+    st.title("Your Cadence dashboard")
     st.caption("Your reported state leads today's plan.")
     weekly_schedule = None
     locked_plan = None
@@ -1037,9 +1068,6 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 display_schedule = weekly_schedule
             if locked_plan:
                 st.success(f"Your {prediction.phase}-keyed plan is locked.")
-            st.caption(
-                "Template schedule. Gemini-generated plans are not connected yet."
-            )
             for item in display_schedule:
                 with st.container(border=True):
                     heading = f"{item['day']} - {item['title']}"
@@ -1085,15 +1113,15 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
 
     with meals_tab:
         st.subheader("Today's meal prep idea")
-        st.info("AI meal ideas are not connected yet.")
+        st.caption("No meal-prep idea has been generated for today.")
 
     with help_tab:
         st.subheader("What might help")
-        st.info("Sourced, phase-aware guidance is not connected yet.")
+        st.caption("No sourced guidance is available for this check-in.")
 
     with report_tab:
         st.subheader("Appointment report")
-        st.info("Cycle and check-in statistics are not available yet.")
+        st.caption("Your report will include summaries of your logged history.")
 
 
 if "pending_login_code" in st.session_state:
@@ -1103,7 +1131,7 @@ if "pending_login_code" in st.session_state:
 mongo_uri = os.getenv("MONGODB_URI", "").strip()
 database_name = (os.getenv("MONGODB_DATABASE") or "phase").strip() or "phase"
 if not mongo_uri:
-    st.title("Phase")
+    st.title("Cadence")
     st.error(
         "Account storage is not configured. Set MONGODB_URI in "
         "apps/web/.env, then restart Streamlit."
@@ -1113,7 +1141,7 @@ if not mongo_uri:
 try:
     database = connect_database(mongo_uri, database_name)
 except PyMongoError:
-    st.title("Phase")
+    st.title("Cadence")
     st.error(
         "Could not connect to MongoDB. Check the connection string, database "
         "network access, and credentials in apps/web/.env. No account data was "
