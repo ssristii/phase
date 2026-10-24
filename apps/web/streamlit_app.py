@@ -300,6 +300,7 @@ st.markdown(
             linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0) 48%),
             linear-gradient(180deg, var(--crimson) 0%, var(--cherry) 100%) !important;
         color: var(--parchment) !important;
+        -webkit-text-fill-color: var(--parchment) !important;
         border: 2px solid var(--gold) !important;
         border-radius: 999px !important;
         min-height: 3.15rem;
@@ -341,6 +342,7 @@ st.markdown(
     .st-key-outline_sign_out_top button {
         background: rgba(247, 242, 231, 0.75) !important;
         color: var(--cherry) !important;
+        -webkit-text-fill-color: var(--cherry) !important;
         border: 1.5px solid var(--gold) !important;
         box-shadow: 0 3px 8px rgba(43, 27, 23, 0.12) !important;
         border-radius: 999px !important;
@@ -350,6 +352,7 @@ st.markdown(
     /* Dimmed Clear keeps at least ~3:1 on parchment (wine-tint on cream). */
     .st-key-outline_clear_transcript_dim button {
         color: #7A4A52 !important;
+        -webkit-text-fill-color: #7A4A52 !important;
         border-color: rgba(201, 162, 75, 0.65) !important;
         background: rgba(247, 242, 231, 0.45) !important;
         box-shadow: none !important;
@@ -403,9 +406,17 @@ st.markdown(
     input, textarea { color: var(--espresso) !important; -webkit-text-fill-color: var(--espresso) !important; }
     [data-testid="stNumberInput"] button {
         color: var(--parchment) !important;
+        -webkit-text-fill-color: var(--parchment) !important;
         background: linear-gradient(180deg, var(--crimson), var(--cherry)) !important;
         border: 1px solid var(--gold) !important;
         border-radius: 999px !important;
+    }
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] summary p,
+    [data-testid="stExpander"] summary span {
+        color: var(--taupe) !important;
+        -webkit-text-fill-color: var(--taupe) !important;
+        font-weight: 700;
     }
     .st-key-card_voice_transcript {
         background: var(--mahogany) !important;
@@ -500,6 +511,7 @@ st.markdown(
             linear-gradient(180deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0) 48%),
             linear-gradient(180deg, var(--crimson) 0%, var(--cherry) 100%) !important;
         color: var(--parchment) !important;
+        -webkit-text-fill-color: var(--parchment) !important;
         border: 2px solid var(--gold) !important;
         border-radius: 999px !important;
         min-height: 3.15rem;
@@ -521,6 +533,7 @@ st.markdown(
         border-radius: 999px !important;
         border: 1.5px solid var(--gold) !important;
         color: #7A4A52 !important;
+        -webkit-text-fill-color: #7A4A52 !important;
         background: rgba(243, 233, 210, 0.7) !important;
         font-weight: 700;
     }
@@ -635,28 +648,34 @@ def show_auth_page() -> None:
     with create_tab:
         st.write("Create an account with no name, email, or phone number.")
         with st.form("create-account-form"):
-            age = st.number_input("Age", min_value=0, max_value=120, value=18)
+            age_text = st.text_input("Age", value="18")
             privacy_acknowledged = st.checkbox(
                 "I understand the sign-in code is shown once and cannot be recovered."
             )
             submitted = st.form_submit_button("Create my account")
         if submitted:
-            if age < 18:
-                st.error("Phase is for adults 18 and older.")
-            elif not privacy_acknowledged:
-                st.error("Confirm that you understand how the sign-in code works.")
-            else:
-                try:
-                    account_id, login_code = create_account(
-                        database.accounts,
-                        int(age),
-                    )
-                except PyMongoError:
-                    st.error("Account storage is unavailable. Please try again later.")
+            try:
+                age = int(age_text.strip())
+            except ValueError:
+                age = None
+                st.error("Enter a whole number for age.")
+            if age is not None:
+                if age < 18:
+                    st.error("Phase is for adults 18 and older.")
+                elif not privacy_acknowledged:
+                    st.error("Confirm that you understand how the sign-in code works.")
                 else:
-                    st.session_state["pending_login_code"] = login_code
-                    st.session_state["account_id"] = account_id
-                    st.rerun()
+                    try:
+                        account_id, login_code = create_account(
+                            database.accounts,
+                            age,
+                        )
+                    except PyMongoError:
+                        st.error("Account storage is unavailable. Please try again later.")
+                    else:
+                        st.session_state["pending_login_code"] = login_code
+                        st.session_state["account_id"] = account_id
+                        st.rerun()
 
 
 def show_recovery_code() -> None:
@@ -1283,8 +1302,6 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
             audio_bytes = st.session_state.get("voice_readback_audio")
             if isinstance(audio_bytes, (bytes, bytearray)) and audio_bytes:
                 st.audio(bytes(audio_bytes), format="audio/mp3")
-            else:
-                st.caption("Spoken readback unavailable; showing text only.")
     weekly_schedule = None
     locked_plan = None
     if not safety.suppress_plan:
