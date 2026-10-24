@@ -3,6 +3,47 @@ from datetime import date
 
 
 PHASES = ("Menstrual", "Follicular", "Ovulatory", "Luteal")
+RECOVERY_EXERCISES = {
+    "Cat-cow stretch",
+    "Hip flexor stretch",
+    "Hamstring stretch",
+    "Walking",
+    "Cycling",
+    "Easy dance",
+    "Mobility flow",
+}
+EXERCISE_CATALOG = (
+    "Bodyweight squat",
+    "Goblet squat",
+    "Split squat",
+    "Reverse lunge",
+    "Step-up",
+    "Glute bridge",
+    "Hip hinge",
+    "Romanian deadlift",
+    "Calf raise",
+    "Wall push-up",
+    "Incline push-up",
+    "Dumbbell chest press",
+    "Dumbbell row",
+    "Resistance-band row",
+    "Overhead press",
+    "Lateral raise",
+    "Biceps curl",
+    "Triceps extension",
+    "Dead bug",
+    "Bird dog",
+    "Front plank",
+    "Side plank",
+    "Farmer carry",
+    "Cat-cow stretch",
+    "Hip flexor stretch",
+    "Hamstring stretch",
+    "Walking",
+    "Cycling",
+    "Easy dance",
+    "Mobility flow",
+)
 
 
 @dataclass(frozen=True)
@@ -158,21 +199,178 @@ def build_plan(
     }
 
 
-def grocery_list(phase: str | None, dietary_preference: str) -> list[str]:
-    phase_items = {
-        "Menstrual": ["Lentils", "Spinach", "Oats", "Oranges"],
-        "Follicular": ["Chickpeas", "Bell peppers", "Brown rice", "Berries"],
-        "Ovulatory": ["Tofu", "Tomatoes", "Quinoa", "Cucumber"],
-        "Luteal": ["Beans", "Sweet potatoes", "Pumpkin seeds", "Bananas"],
-        None: ["Beans", "Oats", "Leafy greens", "Seasonal fruit"],
+def validate_exercises(raw: str) -> tuple[list[str], list[str]]:
+    by_normalized_name = {
+        " ".join(name.casefold().split()): name for name in EXERCISE_CATALOG
     }
-    items = phase_items[phase]
-    if dietary_preference == "Vegetarian":
-        return items
-    if dietary_preference == "Vegan":
-        return items
+    selected: list[str] = []
+    unsupported: list[str] = []
+    for value in raw.replace("\n", ",").split(","):
+        candidate = value.strip()
+        if not candidate:
+            continue
+        canonical = by_normalized_name.get(" ".join(candidate.casefold().split()))
+        if canonical is None:
+            unsupported.append(candidate)
+        elif canonical not in selected:
+            selected.append(canonical)
+    return selected, unsupported
+
+
+def weekly_workout_schedule(
+    phase: str | None,
+    goal: str,
+    exercises: list[str],
+    energy: int,
+    sleep_hours: float,
+    pain: int,
+    today: date,
+) -> list[dict[str, object]]:
+    weekly_template = (
+        ("Monday", "Strength A", "workout"),
+        ("Tuesday", "Easy movement", "recovery"),
+        ("Wednesday", "Strength B", "workout"),
+        ("Thursday", "Rest and mobility", "rest"),
+        ("Friday", "Strength C", "workout"),
+        ("Saturday", "Easy cardio", "recovery"),
+        ("Sunday", "Rest", "rest"),
+    )
+    goal_exercises = {
+        "Strength": ("Goblet squat", "Dumbbell row", "Glute bridge"),
+        "General fitness": ("Bodyweight squat", "Incline push-up", "Glute bridge"),
+        "Energy": ("Bodyweight squat", "Glute bridge", "Calf raise"),
+    }.get(goal, ("Bodyweight squat", "Glute bridge", "Walking"))
+    strength_pool = list(
+        dict.fromkeys(
+            [name for name in exercises if name not in RECOVERY_EXERCISES]
+            + list(goal_exercises)
+        )
+    )
+    recovery_pool = [
+        name for name in exercises if name in RECOVERY_EXERCISES
+    ] or ["Walking", "Mobility flow"]
+    schedule: list[dict[str, object]] = []
+    strength_count = 0
+    recovery_count = 0
+
+    for weekday, title, day_type in weekly_template:
+        item: dict[str, object] = {
+            "day": weekday,
+            "title": title,
+            "type": day_type,
+            "is_today": weekday == today.strftime("%A"),
+        }
+        if day_type == "rest":
+            item.update(
+                {
+                    "exercises": [],
+                    "sets": 0,
+                    "reps": "Rest, or choose gentle mobility if comfortable.",
+                    "reason": "A planned recovery day; adjust to how you feel.",
+                }
+            )
+        else:
+            if day_type == "workout":
+                day_exercises = [
+                    strength_pool[(strength_count * 2 + offset) % len(strength_pool)]
+                    for offset in range(3)
+                ]
+                strength_count += 1
+            else:
+                day_exercises = [
+                    recovery_pool[recovery_count % len(recovery_pool)]
+                ]
+                recovery_count += 1
+            day_energy = energy if item["is_today"] else 3
+            day_sleep = sleep_hours if item["is_today"] else 7.0
+            day_pain = pain if item["is_today"] else 0
+            plan = build_plan(
+                phase,
+                goal,
+                day_exercises,
+                day_energy,
+                day_sleep,
+                day_pain,
+            )
+            item.update(
+                {
+                    "title": (
+                        plan["title"] if item["is_today"] else title
+                    ),
+                    "exercises": day_exercises,
+                    "sets": plan["sets"],
+                    "reps": plan["reps"],
+                    "reason": (
+                        plan["reason"]
+                        if item["is_today"]
+                        else f"{phase or 'Symptom-based'} starting-prior plan; "
+                        "check your energy, sleep, and pain again before this session."
+                    ),
+                }
+            )
+        schedule.append(item)
+    return schedule
+
+
+def grocery_sections(
+    phase: str | None,
+    dietary_preference: str = "No preference",
+) -> dict[str, list[str]]:
+    phase_produce = {
+        "Menstrual": ["Spinach", "Oranges", "Carrots", "Apples"],
+        "Follicular": ["Bell peppers", "Berries", "Cucumber", "Lemons"],
+        "Ovulatory": ["Tomatoes", "Cucumber", "Grapes", "Avocado"],
+        "Luteal": ["Sweet potatoes", "Bananas", "Broccoli", "Pears"],
+        None: ["Leafy greens", "Seasonal fruit", "Carrots", "Cucumbers"],
+    }[phase]
+    grains = [
+        "Oats",
+        "Brown rice",
+        "Quinoa",
+        "Whole-grain bread",
+    ]
     if dietary_preference == "Gluten-free":
-        return [item for item in items if item not in {"Oats", "Brown rice"}] + [
-            "Potatoes"
+        grains = [
+            "Certified gluten-free oats",
+            "Brown rice",
+            "Quinoa",
+            "Gluten-free bread",
         ]
-    return items
+    return {
+        "Produce": phase_produce,
+        "Protein": [
+            "Lentils",
+            "Chickpeas",
+            "Black beans",
+            "Tofu",
+            "Edamame",
+        ],
+        "Grains and starches": grains,
+        "Pantry": [
+            "Pumpkin seeds",
+            "Peanut butter",
+            "Olive oil",
+            "Canned tomatoes",
+        ],
+        "Flavor and extras": [
+            "Garlic",
+            "Onions",
+            "Ginger",
+            "Hummus",
+        ],
+    }
+
+
+def grocery_list(phase: str | None, dietary_preference: str) -> list[str]:
+    if dietary_preference not in {
+        "No preference",
+        "Vegetarian",
+        "Vegan",
+        "Gluten-free",
+    }:
+        raise ValueError("Choose a supported dietary preference.")
+    return [
+        item
+        for section in grocery_sections(phase, dietary_preference).values()
+        for item in section
+    ]

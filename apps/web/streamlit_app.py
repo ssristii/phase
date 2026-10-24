@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -21,26 +22,55 @@ from persistence import (
     save_checkin,
     stored_profile,
 )
-from phase_engine import build_plan, evaluate_safety, grocery_list, predict_cycle
+from phase_engine import (
+    EXERCISE_CATALOG,
+    evaluate_safety,
+    grocery_list,
+    grocery_sections,
+    predict_cycle,
+    validate_exercises,
+    weekly_workout_schedule,
+)
 
 
 load_dotenv(Path(__file__).with_name(".env"))
 TODAY = date.today()
 PHASES = ("Menstrual", "Follicular", "Ovulatory", "Luteal")
 GOALS = ("Strength", "General fitness", "Energy")
-EXERCISES = (
-    "Bodyweight squat",
-    "Glute bridge",
-    "Wall push-up",
-    "Dumbbell row",
-    "Dead bug",
-    "Step-up",
-    "Hip hinge",
-    "Overhead press",
-)
 DIETS = ("No preference", "Vegetarian", "Vegan", "Gluten-free")
 FLOWS = ("None", "Spotting", "Light", "Moderate", "Heavy", "Very heavy")
 MOODS = ("Low", "Okay", "Good", "Anxious", "Irritable")
+CHECKIN_INPUT_KEYS = (
+    "checkin-flow",
+    "checkin-mood",
+    "checkin-energy",
+    "checkin-sleep",
+    "checkin-pain",
+    "checkin-workout-done",
+    "checkin-severe-pain",
+    "checkin-irregular",
+    "checkin-pregnancy",
+)
+EMOJI_PATTERN = re.compile(
+    "[\U0001F300-\U0001FAFF\U0001F1E6-\U0001F1FF"
+    "\u2600-\u27BF\uFE0F\u200D]"
+)
+
+
+def strip_emojis(text: str) -> str:
+    return EMOJI_PATTERN.sub("", text)
+
+
+def clean_voice_transcript() -> None:
+    st.session_state["voice_transcript"] = strip_emojis(
+        st.session_state.get("voice_transcript", "")
+    )
+
+
+def clear_voice_text() -> None:
+    st.session_state.pop("voice_transcript", None)
+    st.session_state.pop("voice_extracted", None)
+    st.session_state.pop("voice_transcribed", None)
 
 
 st.set_page_config(page_title="Phase", page_icon=None, layout="centered")
@@ -113,18 +143,42 @@ st.markdown(
     }
     [data-baseweb="select"] > div,
     [data-baseweb="input"] > div,
+    [data-testid="stNumberInput"] input,
     [data-testid="stDateInput"] input,
     [data-testid="stTextArea"] textarea {
         background: #FFF9EE !important;
         color: #2A1A14 !important;
+        -webkit-text-fill-color: #2A1A14 !important;
+        caret-color: #9B1B30 !important;
         border-color: #9B1B30 !important;
         border-radius: 12px !important;
+    }
+    input, textarea {
+        color: #2A1A14 !important;
+        -webkit-text-fill-color: #2A1A14 !important;
+    }
+    [data-testid="stNumberInput"] button {
+        color: #F3E9D2 !important;
+        background: #9B1B30 !important;
+        border: 1px solid #C9A24B !important;
+        border-radius: 999px !important;
     }
     [data-testid="stAudioInput"] button {
         border-radius: 999px !important;
         border: 2px solid #C9A24B !important;
         color: #F3E9D2 !important;
         background: #9B1B30 !important;
+    }
+    [data-testid="stCode"] pre {
+        background: #FFF9EE !important;
+        color: #5A0F1C !important;
+        border: 2px solid #C9A24B !important;
+        border-radius: 16px !important;
+        font-size: 1.5rem !important;
+        font-weight: 750 !important;
+        letter-spacing: 0.14em !important;
+        text-align: center !important;
+        padding: 1rem !important;
     }
     .phase-wheel {
         width: 220px;
@@ -286,7 +340,7 @@ def show_recovery_code() -> None:
 
 def show_profile_setup(account) -> None:
     st.title("Set up your profile")
-    st.write("These details personalize estimates and plans. No identity details.")
+    st.write("These details personalize your estimates and weekly plans.")
     with st.form("profile-setup-form"):
         unsure = st.checkbox("I am unsure of my last period start")
         last_period = st.date_input(
@@ -309,13 +363,15 @@ def show_profile_setup(account) -> None:
                 value=28,
             )
         goal = st.selectbox("Your goal", GOALS)
-        exercises = st.multiselect(
+        exercise_text = st.text_area(
             "Exercises you currently do (up to 5)",
-            EXERCISES,
-            max_selections=5,
+            placeholder="Enter up to five exercises, separated by commas or new lines",
+            help="Plans use supported exercises only. Unknown entries are flagged before saving.",
         )
         diet = st.selectbox("Dietary preference", DIETS)
         submitted = st.form_submit_button("Save profile and continue")
+    with st.expander("Supported exercises"):
+        st.write(", ".join(EXERCISE_CATALOG))
 
     if submitted:
         if not unsure and not date_confirmed:
@@ -323,36 +379,53 @@ def show_profile_setup(account) -> None:
         elif not unsure and last_period > TODAY:
             st.error("Last period start cannot be in the future.")
         else:
-            profile = stored_profile(
-                {
-                    "unsure": unsure,
-                    "last_period": last_period,
-                    "cycle_length": (
-                        int(cycle_length) if cycle_length is not None else None
-                    ),
-                    "goal": goal,
-                    "exercises": exercises,
-                    "diet": diet,
-                }
-            )
-            try:
-                database.accounts.update_one(
-                    {"_id": account["_id"]},
-                    {
-                        "$set": {
-                            "profile": profile,
-                            "updated_at": datetime.now(timezone.utc),
-                        }
-                    },
+            exercises, unsupported = validate_exercises(exercise_text)
+            if unsupported:
+                st.error(
+                    "These exercises are not in the supported list: "
+                    + ", ".join(unsupported)
                 )
-            except PyMongoError:
-                st.error("Could not save your profile to MongoDB. Please try again.")
-                st.stop()
-            st.session_state["flow_step"] = "checkin"
-            st.rerun()
+            elif len(exercises) > 5:
+                st.error("Choose no more than five supported exercises.")
+            else:
+                profile = stored_profile(
+                    {
+                        "unsure": unsure,
+                        "last_period": last_period,
+                        "cycle_length": (
+                            int(cycle_length) if cycle_length is not None else None
+                        ),
+                        "goal": goal,
+                        "exercises": exercises,
+                        "diet": diet,
+                    }
+                )
+                try:
+                    database.accounts.update_one(
+                        {"_id": account["_id"]},
+                        {
+                            "$set": {
+                                "profile": profile,
+                                "updated_at": datetime.now(timezone.utc),
+                            }
+                        },
+                    )
+                except PyMongoError:
+                    st.error(
+                        "Could not save your profile to MongoDB. Please try again."
+                    )
+                    st.stop()
+                st.session_state["flow_step"] = "checkin"
+                st.rerun()
 
 
 def show_voice_checkin() -> None:
+    if st.session_state.pop("_clear_voice_capture", False):
+        st.session_state.pop("voice-recording", None)
+        st.session_state.pop("voice-upload", None)
+    if st.session_state.pop("_clear_voice_text", False):
+        clear_voice_text()
+
     with st.expander("Voice check-in (record, then upload)", expanded=True):
         st.write(
             "Record up to 60 seconds. Say how your flow, mood, energy, sleep, "
@@ -364,27 +437,39 @@ def show_voice_checkin() -> None:
         )
         st.caption(
             "This is record-then-upload, not live transcription. Audio is sent "
-            "to the local Phase API and is not saved in MongoDB. If recording "
-            "does not work in this browser, use the tap form below."
+            "to the local Phase API and is not saved in MongoDB. If microphone "
+            "recording fails, upload an audio file or use the tap form below."
         )
         with st.form("voice-checkin-form"):
             voice_audio = st.audio_input(
                 "Record your check-in",
                 sample_rate=16000,
+                key="voice-recording",
                 help="Your browser may ask for microphone access.",
+            )
+            uploaded_audio = st.file_uploader(
+                "Or upload an audio file",
+                type=("wav", "mp3", "m4a", "mp4", "webm", "ogg"),
+                key="voice-upload",
             )
             transcribe_voice = st.form_submit_button("Transcribe with Cartesia")
         if transcribe_voice:
-            if voice_audio is None:
+            audio = uploaded_audio if uploaded_audio is not None else voice_audio
+            if audio is None:
                 st.error(
                     "No recording was received. Check browser microphone "
-                    "permissions or use the tap form below."
+                    "permissions, upload a recording, or use the tap form below."
                 )
             else:
+                audio_type = (
+                    uploaded_audio.type
+                    if uploaded_audio is not None
+                    else "audio/wav"
+                )
                 request = Request(
                     "http://127.0.0.1:4000/api/cartesia/transcribe",
-                    data=voice_audio.getvalue(),
-                    headers={"Content-Type": "audio/wav"},
+                    data=audio.getvalue(),
+                    headers={"Content-Type": audio_type},
                     method="POST",
                 )
                 try:
@@ -396,11 +481,12 @@ def show_voice_checkin() -> None:
                             "Cartesia returned an empty transcript. Try recording again."
                         )
                     else:
-                        st.session_state["voice_transcript"] = transcript
-                        st.success(
-                            "Review the editable transcript, then enter or correct "
-                            "the structured values below."
+                        st.session_state["voice_transcript"] = strip_emojis(
+                            transcript
                         )
+                        st.session_state["voice_transcribed"] = True
+                        st.session_state["_clear_voice_capture"] = True
+                        st.rerun()
                 except HTTPError as error:
                     try:
                         details = json.loads(error.read().decode("utf-8"))
@@ -422,15 +508,84 @@ def show_voice_checkin() -> None:
                     )
 
         if "voice_transcript" in st.session_state:
+            if st.session_state.pop("voice_transcribed", False):
+                st.success(
+                    "Review and correct the transcript before extracting "
+                    "check-in values."
+                )
             st.text_area(
                 "Editable transcript",
                 key="voice_transcript",
                 height=120,
+                on_change=clean_voice_transcript,
             )
             st.caption(
-                "Transcript extraction into check-in fields is not connected yet. "
-                "Use the tap form to confirm each value."
+                "Remove your name or identifying details before extraction. "
+                "The transcript is temporary and is not saved to your account."
             )
+            extract_col, clear_col = st.columns(2)
+            if extract_col.button(
+                "Extract check-in values",
+                key="extract-voice-fields",
+            ):
+                transcript = strip_emojis(
+                    st.session_state["voice_transcript"]
+                ).strip()
+                if not transcript:
+                    st.error("Enter or correct the transcript before extraction.")
+                else:
+                    request = Request(
+                        "http://127.0.0.1:4000/api/gemini/checkin",
+                        data=json.dumps({"transcript": transcript}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urlopen(request, timeout=45) as response:
+                            payload = json.loads(response.read().decode("utf-8"))
+                        fields = payload.get("fields")
+                        if not isinstance(fields, dict):
+                            raise ValueError("Gemini returned invalid check-in fields.")
+                        st.session_state["voice_extracted"] = fields
+                        input_keys = {
+                            "flow": "checkin-flow",
+                            "mood": "checkin-mood",
+                            "energy": "checkin-energy",
+                            "sleep_hours": "checkin-sleep",
+                            "pain": "checkin-pain",
+                            "workout_done": "checkin-workout-done",
+                            "severe_pain": "checkin-severe-pain",
+                            "persistently_irregular_cycles": "checkin-irregular",
+                            "positive_pregnancy_test": "checkin-pregnancy",
+                        }
+                        for field, key in input_keys.items():
+                            if fields.get(field) is not None:
+                                st.session_state[key] = fields[field]
+                        st.success(
+                            "Review the suggested values in the tap form and correct "
+                            "anything that does not match how you feel."
+                        )
+                        st.rerun()
+                    except HTTPError as error:
+                        try:
+                            details = json.loads(error.read().decode("utf-8"))
+                            message = details.get(
+                                "error",
+                                "Extraction request failed.",
+                            )
+                        except (UnicodeDecodeError, json.JSONDecodeError):
+                            message = "Extraction request failed."
+                        st.error(f"Gemini extraction failed: {message}")
+                    except (URLError, TimeoutError):
+                        st.error(
+                            "Could not reach the local Phase API. Check that it is "
+                            "running, then use the tap form if needed."
+                        )
+                    except (json.JSONDecodeError, ValueError) as error:
+                        st.error(f"Could not use the extracted values: {error}")
+            if clear_col.button("Clear voice text", key="clear-voice-text"):
+                st.session_state["_clear_voice_text"] = True
+                st.rerun()
 
 
 def show_daily_checkin(account) -> None:
@@ -445,52 +600,117 @@ def show_daily_checkin(account) -> None:
         st.error("Could not load today's check-in from MongoDB. Please reload.")
         st.stop()
     show_voice_checkin()
+    suggested = st.session_state.get("voice_extracted", {})
+    suggested_flow = suggested.get("flow")
+    if suggested_flow not in FLOWS:
+        suggested_flow = existing.get("flow", "None")
+    suggested_mood = suggested.get("mood")
+    if suggested_mood not in MOODS:
+        suggested_mood = existing.get("mood", "Okay")
+    if "voice_extracted" in st.session_state:
+        confidence = suggested.get("confidence")
+        st.info(
+            "Voice suggestions are not a diagnosis. Review and correct every "
+            "field before continuing."
+            + (
+                f" Extraction confidence: {confidence:.0%}."
+                if isinstance(confidence, (int, float))
+                else ""
+            )
+        )
+
+    initial_values = {
+        "checkin-flow": suggested_flow,
+        "checkin-mood": suggested_mood,
+        "checkin-energy": int(
+            suggested.get("energy")
+            if suggested.get("energy") in range(1, 6)
+            else existing.get("energy", 3)
+        ),
+        "checkin-sleep": float(
+            suggested.get("sleep_hours")
+            if isinstance(suggested.get("sleep_hours"), (int, float))
+            and 0 <= suggested["sleep_hours"] <= 12
+            else existing.get("sleep_hours", 7.0)
+        ),
+        "checkin-pain": int(
+            suggested.get("pain")
+            if suggested.get("pain") in range(0, 11)
+            else existing.get("pain", 0)
+        ),
+        "checkin-workout-done": bool(
+            suggested.get("workout_done")
+            if isinstance(suggested.get("workout_done"), bool)
+            else existing.get("workout_done", False)
+        ),
+        "checkin-severe-pain": bool(
+            suggested.get("severe_pain")
+            if isinstance(suggested.get("severe_pain"), bool)
+            else existing.get("severe_pain", False)
+        ),
+        "checkin-irregular": bool(
+            suggested.get("persistently_irregular_cycles")
+            if isinstance(
+                suggested.get("persistently_irregular_cycles"),
+                bool,
+            )
+            else existing.get("persistently_irregular_cycles", False)
+        ),
+        "checkin-pregnancy": bool(
+            suggested.get("positive_pregnancy_test")
+            if isinstance(suggested.get("positive_pregnancy_test"), bool)
+            else existing.get("positive_pregnancy_test", False)
+        ),
+    }
+    for key, value in initial_values.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
     with st.form("daily-checkin-form"):
         flow = st.selectbox(
             "Flow",
             FLOWS,
-            index=FLOWS.index(existing.get("flow", "None")),
+            key="checkin-flow",
         )
         mood = st.selectbox(
             "Mood",
             MOODS,
-            index=MOODS.index(existing.get("mood", "Okay")),
+            key="checkin-mood",
         )
         energy = st.slider(
             "Energy",
             min_value=1,
             max_value=5,
-            value=int(existing.get("energy", 3)),
+            key="checkin-energy",
         )
         sleep = st.slider(
             "Sleep (hours)",
             min_value=0.0,
             max_value=12.0,
             step=0.5,
-            value=float(existing.get("sleep_hours", 7.0)),
+            key="checkin-sleep",
         )
         pain = st.slider(
             "Pain (0 to 10)",
             min_value=0,
             max_value=10,
-            value=int(existing.get("pain", 0)),
+            key="checkin-pain",
         )
         workout_done = st.checkbox(
             "I completed a workout",
-            value=bool(existing.get("workout_done", False)),
+            key="checkin-workout-done",
         )
         severe_pain = st.checkbox(
             "My pain feels severe",
-            value=bool(existing.get("severe_pain", False)),
+            key="checkin-severe-pain",
         )
         irregular = st.checkbox(
             "My cycles are persistently under 21 or over 35 days",
-            value=bool(existing.get("persistently_irregular_cycles", False)),
+            key="checkin-irregular",
         )
         pregnancy = st.checkbox(
             "I had a positive pregnancy test",
-            value=bool(existing.get("positive_pregnancy_test", False)),
+            key="checkin-pregnancy",
         )
         submitted = st.form_submit_button("Continue to my dashboard")
 
@@ -514,6 +734,8 @@ def show_daily_checkin(account) -> None:
                 "Your answers were not saved; please try again."
             )
             st.stop()
+        st.session_state["_clear_checkin_state"] = True
+        st.session_state["_clear_voice_capture"] = True
         st.session_state["flow_step"] = "dashboard"
         st.rerun()
 
@@ -594,6 +816,11 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 "account_id",
                 "flow_step",
                 "voice_transcript",
+                "voice_extracted",
+                "voice_transcribed",
+                "voice-recording",
+                "voice-upload",
+                *CHECKIN_INPUT_KEYS,
             ):
                 st.session_state.pop(key, None)
             st.rerun()
@@ -604,32 +831,61 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
     st.title("Your Phase dashboard")
     st.caption("Your reported state leads. Phase is a starting prior.")
     st.caption("Informational, not a diagnosis.")
+    weekly_schedule = None
+    current_groceries = None
+    locked_plan = None
+    if not safety.suppress_plan:
+        weekly_schedule = weekly_workout_schedule(
+            phase=prediction.phase,
+            goal=profile["goal"],
+            exercises=profile.get("exercises", []),
+            energy=checkin["energy"],
+            sleep_hours=checkin["sleep_hours"],
+            pain=checkin["pain"],
+            today=TODAY,
+        )
+        current_groceries = grocery_list(
+            prediction.phase,
+            profile["dietary_preference"],
+        )
+        if prediction.phase:
+            locked_plan = get_phase_lock(
+                database.phase_locks,
+                account["_id"],
+                prediction.phase,
+            )
+
     today_tab, workout_tab, grocery_tab, how_tab = st.tabs(
         ("Today", "Workout", "Groceries", "How this works")
     )
 
     with today_tab:
-        st.subheader("Where you are")
-        phase_wheel(prediction.phase)
-        if prediction.phase is None:
-            st.info(prediction.reason)
-        else:
-            st.subheader(f"Estimated phase: {prediction.phase}")
-            st.write(f"Confidence: {prediction.confidence:.0%}")
-            if prediction.population_default:
-                st.info("Cold start: using a population-default 28-day cycle estimate.")
-            st.write(prediction.reason)
-            if prediction.fertile_window:
-                start_day, end_day = prediction.fertile_window
-                st.caption(
-                    f"Estimated fertile window: cycle days {start_day} to {end_day}, "
-                    "low confidence. Never use this estimate for contraception."
-                )
-        st.markdown("#### Today's check-in")
-        st.write(
-            f"Mood: {checkin['mood']}  |  Energy: {checkin['energy']}/5  |  "
-            f"Sleep: {checkin['sleep_hours']:g} hours  |  Pain: {checkin['pain']}/10"
-        )
+        with st.container(border=True):
+            st.subheader("Where you are")
+            phase_wheel(prediction.phase)
+            if prediction.phase is None:
+                st.info(prediction.reason)
+            else:
+                st.subheader(f"Estimated phase: {prediction.phase}")
+                st.write(f"Confidence: {prediction.confidence:.0%}")
+                if prediction.population_default:
+                    st.info(
+                        "Cold start: using a population-default 28-day cycle estimate."
+                    )
+                st.write(prediction.reason)
+                if prediction.fertile_window:
+                    start_day, end_day = prediction.fertile_window
+                    st.caption(
+                        f"Estimated fertile window: cycle days {start_day} to "
+                        f"{end_day}; confidence is low. This is not contraception."
+                    )
+        with st.container(border=True):
+            st.markdown("#### Today's check-in")
+            st.write(
+                f"Mood: {checkin['mood']}  |  Energy: {checkin['energy']}/5  |  "
+                f"Sleep: {checkin['sleep_hours']:g} hours  |  "
+                f"Pain: {checkin['pain']}/10"
+            )
         if safety.alerts:
             st.error(
                 "Please consider contacting a clinician. Plans are suppressed "
@@ -643,40 +899,37 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         )
 
     with workout_tab:
-        st.subheader("Workout plan")
+        st.subheader("Your week of movement")
         if safety.suppress_plan:
             st.info("A workout plan is not shown while a safety trigger is active.")
         else:
-            plan = build_plan(
-                phase=prediction.phase,
-                goal=profile["goal"],
-                exercises=profile.get("exercises", []),
-                energy=checkin["energy"],
-                sleep_hours=checkin["sleep_hours"],
-                pain=checkin["pain"],
+            display_schedule = (
+                locked_plan.get("workout_plan")
+                if locked_plan
+                else weekly_schedule
             )
-            st.markdown(f"### {plan['title']}")
-            st.write(
-                f"{plan['exercise']}: {plan['sets']} sets of {plan['reps']}."
-            )
-            st.write(f"Confidence: {plan['confidence']}")
-            st.write(f"Reason: {plan['reason']}")
-            st.caption(
-                "Reason source: today's self-reported state and this low-confidence "
-                "phase estimate. Research citations are not connected yet."
-            )
-            if prediction.phase:
-                locked = get_phase_lock(
-                    database.phase_locks,
-                    account["_id"],
-                    prediction.phase,
+            if not isinstance(display_schedule, list):
+                display_schedule = weekly_schedule
+            if locked_plan:
+                st.success(
+                    f"Your {prediction.phase}-keyed four-week workout plan is locked."
                 )
-                if locked:
-                    st.success(
-                        f"Your {prediction.phase}-keyed plan is locked for four "
-                        "weeks. Today's reported state still takes priority."
-                    )
-                else:
+            for item in display_schedule:
+                with st.container(border=True):
+                    heading = f"{item['day']} - {item['title']}"
+                    st.markdown(f"### {heading}")
+                    if item.get("is_today"):
+                        st.caption("Today, adjusted using your check-in.")
+                    if item["type"] == "rest":
+                        st.write(item["reps"])
+                    else:
+                        st.write(
+                            f"{', '.join(item['exercises'])} · {item['sets']} "
+                            f"sets · {item['reps']} · rest 60 to 90 seconds."
+                        )
+                    st.caption(f"Why this fits: {item['reason']}")
+            if prediction.phase:
+                if not locked_plan:
                     week = st.selectbox(
                         "Week to save",
                         (1, 2, 3, 4),
@@ -707,38 +960,44 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                             database.phase_locks,
                             account["_id"],
                             prediction.phase,
-                            plan,
-                            grocery_list(
-                                prediction.phase,
-                                profile["dietary_preference"],
-                            ),
+                            weekly_schedule,
+                            current_groceries,
                         )
                         st.rerun()
 
     with grocery_tab:
-        st.subheader("Grocery list")
+        st.subheader("This week's grocery list")
         if safety.suppress_plan:
             st.info("A grocery plan is not shown while a safety trigger is active.")
         else:
-            items = grocery_list(
+            items_to_show = (
+                locked_plan.get("grocery_items")
+                if locked_plan
+                else current_groceries
+            )
+            if locked_plan:
+                st.success(
+                    f"The {prediction.phase}-keyed grocery list is included in "
+                    "your four-week lock."
+                )
+            sections = grocery_sections(
                 prediction.phase,
                 profile["dietary_preference"],
             )
-            for item in items:
-                st.checkbox(item, key=f"grocery-{account['_id']}-{TODAY}-{item}")
+            for section, section_items in sections.items():
+                visible_items = [
+                    item for item in section_items if item in items_to_show
+                ]
+                if visible_items:
+                    st.markdown(f"#### {section}")
+                    for item in visible_items:
+                        st.checkbox(
+                            item,
+                            key=f"grocery-{account['_id']}-{TODAY}-{item}",
+                        )
             st.caption("No calories, macros, or weight-loss targets.")
             if prediction.phase:
-                locked = get_phase_lock(
-                    database.phase_locks,
-                    account["_id"],
-                    prediction.phase,
-                )
-                if locked:
-                    st.success(
-                        f"The {prediction.phase}-keyed grocery list is included "
-                        "in your four-week lock."
-                    )
-                else:
+                if not locked_plan:
                     week = st.selectbox(
                         "Week to save",
                         (1, 2, 3, 4),
@@ -777,36 +1036,25 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                             database.phase_locks,
                             account["_id"],
                             prediction.phase,
-                            plan,
-                            items,
+                            weekly_schedule,
+                            current_groceries,
                         )
                         st.rerun()
 
     with how_tab:
         st.subheader("How this works")
         st.write(
-            "Phase-based training evidence is limited. A phase estimate is only "
-            "a starting prior; your reported sleep, pain, energy, and symptoms lead."
+            "Phase-based training evidence is limited. Your phase estimate is "
+            "only a starting prior; your reported sleep, pain, energy, and "
+            "symptoms lead. Phase estimates are not a contraceptive method."
         )
-        st.write(
-            "Phase estimates are not a contraceptive method. The fertile-window "
-            "estimate is especially uncertain."
-        )
-        st.write(
-            "The cycle phase and plan reasons currently use deterministic local "
-            "logic. Cited medical, Ayurvedic, and TCM knowledge entries are not "
-            "connected in this prototype."
-        )
-        st.write(
-            "Your account stores the salted, keyed hash of your sign-in code, "
-            "profile settings, and check-in values in MongoDB. Audio is not saved."
-        )
+        st.caption("Informational, not a diagnosis.")
+        st.caption("Your sign-in code is stored as a salted hash. Audio is not saved.")
 
 
-st.warning(
-    "Prototype only. Not verified on a real iPhone. Use synthetic test data. "
-    "No name, email, or phone number is collected."
-)
+if "pending_login_code" in st.session_state:
+    show_recovery_code()
+    st.stop()
 
 mongo_uri = os.getenv("MONGODB_URI", "").strip()
 database_name = (os.getenv("MONGODB_DATABASE") or "phase").strip() or "phase"
@@ -830,10 +1078,7 @@ except PyMongoError:
     st.stop()
 
 if "account_id" not in st.session_state:
-    if "pending_login_code" in st.session_state:
-        show_recovery_code()
-    else:
-        show_auth_page()
+    show_auth_page()
     st.stop()
 
 try:
@@ -850,6 +1095,16 @@ profile = account.get("profile")
 if profile is None or st.session_state.get("flow_step") == "profile":
     show_profile_setup(account)
     st.stop()
+
+if st.session_state.pop("_clear_checkin_state", False):
+    for key in (
+        *CHECKIN_INPUT_KEYS,
+        "voice_transcript",
+        "voice_extracted",
+        "voice_transcribed",
+    ):
+        st.session_state.pop(key, None)
+    st.session_state["_clear_voice_capture"] = True
 
 if st.session_state.get("flow_step") != "dashboard":
     show_daily_checkin(account)

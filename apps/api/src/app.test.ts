@@ -39,6 +39,20 @@ describe("Phase API smoke checks", () => {
     });
   });
 
+  it("surfaces missing Gemini credentials for voice extraction", async () => {
+    const response = await fetch(`${baseUrl}/api/gemini/checkin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: "I feel low energy and slept five hours.",
+      }),
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      error: "GEMINI_API_KEY is not configured",
+    });
+  });
+
   it("surfaces missing Cartesia credentials instead of returning sample success", async () => {
     const response = await fetch(`${baseUrl}/api/cartesia/readback`, {
       method: "POST",
@@ -73,15 +87,27 @@ describe("Phase API smoke checks", () => {
     });
   });
 
-  it("rejects unsupported audio types", async () => {
+  it("accepts WebM uploads for browsers that cannot record WAV", async () => {
     const response = await fetch(`${baseUrl}/api/cartesia/transcribe`, {
       method: "POST",
       headers: { "Content-Type": "audio/webm" },
       body: new Uint8Array([1, 2, 3]),
     });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      error: "CARTESIA_API_KEY is not configured",
+    });
+  });
+
+  it("rejects unsupported audio types", async () => {
+    const response = await fetch(`${baseUrl}/api/cartesia/transcribe`, {
+      method: "POST",
+      headers: { "Content-Type": "image/png" },
+      body: new Uint8Array([1, 2, 3]),
+    });
     assert.equal(response.status, 415);
     assert.deepEqual(await response.json(), {
-      error: "Audio must be an MP4 or WAV recording",
+      error: "Upload a WAV, MP3, M4A, MP4, WebM, or Ogg recording",
     });
   });
 });

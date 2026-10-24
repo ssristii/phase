@@ -1,7 +1,15 @@
 import unittest
 from datetime import date, timedelta
 
-from phase_engine import build_plan, evaluate_safety, predict_cycle
+from phase_engine import (
+    build_plan,
+    evaluate_safety,
+    grocery_list,
+    grocery_sections,
+    predict_cycle,
+    validate_exercises,
+    weekly_workout_schedule,
+)
 
 
 class CycleEngineTests(unittest.TestCase):
@@ -51,6 +59,52 @@ class CycleEngineTests(unittest.TestCase):
         )
         self.assertTrue(safety.suppress_plan)
         self.assertEqual(len(safety.alerts), 5)
+
+    def test_exercise_entry_accepts_catalog_names_and_reports_unknown_names(self):
+        supported, unsupported = validate_exercises(
+            "bodyweight squat\nWalking, made-up exercise, WALKING"
+        )
+        self.assertEqual(supported, ["Bodyweight squat", "Walking"])
+        self.assertEqual(unsupported, ["made-up exercise"])
+
+    def test_weekly_schedule_has_seven_days_and_adjusts_today(self):
+        schedule = weekly_workout_schedule(
+            "Follicular",
+            "Strength",
+            ["Goblet squat", "Dumbbell row"],
+            energy=2,
+            sleep_hours=5,
+            pain=7,
+            today=date(2026, 10, 19),
+        )
+        self.assertEqual(len(schedule), 7)
+        self.assertEqual(sum(item["is_today"] for item in schedule), 1)
+        self.assertEqual(schedule[0]["title"], "Moderate strength practice")
+        self.assertIn("sleep", schedule[0]["reason"])
+        self.assertEqual(schedule[3]["type"], "rest")
+        walking_only = weekly_workout_schedule(
+            "Luteal",
+            "Strength",
+            ["Walking"],
+            energy=3,
+            sleep_hours=7,
+            pain=0,
+            today=date(2026, 10, 19),
+        )
+        self.assertNotIn("Walking", walking_only[0]["exercises"])
+
+    def test_grocery_list_is_full_and_grouped_for_each_phase(self):
+        for phase in ("Menstrual", "Follicular", "Ovulatory", "Luteal", None):
+            with self.subTest(phase=phase):
+                sections = grocery_sections(phase)
+                items = grocery_list(phase, "Vegan")
+                self.assertEqual(len(sections), 5)
+                self.assertGreaterEqual(len(items), 20)
+                self.assertEqual(len(items), len(set(items)))
+        gluten_free_items = grocery_list(None, "Gluten-free")
+        self.assertIn("Certified gluten-free oats", gluten_free_items)
+        self.assertIn("Gluten-free bread", gluten_free_items)
+        self.assertNotIn("Whole-grain bread", gluten_free_items)
 
 
 if __name__ == "__main__":

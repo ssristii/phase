@@ -32,11 +32,20 @@ In another PowerShell terminal:
 ```powershell
 Set-Location C:\Users\SRIST\phase
 python -m pip install -r apps\web\requirements.txt
-python -m streamlit run apps\web\streamlit_app.py
+python -m streamlit run apps\web\streamlit_app.py --server.address 127.0.0.1
 ```
 
 Open `http://127.0.0.1:8501`. Create an account, save the code shown once,
 complete profile setup, submit today's check-in, and continue to the dashboard.
+
+## Voice check-in
+
+Copy `apps/api/.env.example` to `apps/api/.env` and set `CARTESIA_API_KEY` and
+`GEMINI_API_KEY` there. Restart the API after changing these values. The browser
+records then uploads audio to Cartesia; this is not live transcription. If the
+browser cannot access its microphone, use the audio-file upload or the tap form.
+Review and correct the transcript before asking Gemini to suggest check-in
+fields. The API keys stay in the local API environment, never in the browser app.
 
 The MongoDB URI contains database credentials. Never paste it into chat, commit
 it, or put it in client-visible settings. For a hosted deployment, use the
