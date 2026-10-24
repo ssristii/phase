@@ -37,6 +37,20 @@ class ProductCopyTests(unittest.TestCase):
         self.assertNotIn("confidence:", content)
         self.assertNotIn("confidence is", content)
 
+    def test_audio_clear_uses_a_new_widget_key_and_clears_transient_state(self):
+        content = (ROOT / "apps" / "web" / "streamlit_app.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('key=f"audio_{int(st.session_state.get(\'audio_nonce\', 0))}"', content)
+        self.assertIn('st.session_state["audio_nonce"] = nonce + 1', content)
+        self.assertIn('st.session_state.pop("voice_wav_bytes", None)', content)
+        self.assertIn('st.session_state.pop("voice_g1_result", None)', content)
+        self.assertIn('st.session_state.pop("voice_confirm_fields", None)', content)
+        self.assertLess(
+            content.index('clear_transcript.button("Clear"'),
+            content.index("voice_audio = st.audio_input("),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

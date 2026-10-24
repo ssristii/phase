@@ -85,6 +85,17 @@ def clear_voice_text() -> None:
     st.session_state.pop("voice_transcript", None)
     st.session_state.pop("voice_extracted", None)
     st.session_state.pop("voice_transcribed", None)
+    st.session_state.pop("voice_wav_bytes", None)
+    st.session_state.pop("voice_g1_result", None)
+    st.session_state.pop("voice_confirm_fields", None)
+
+
+def discard_audio_capture() -> None:
+    nonce = int(st.session_state.get("audio_nonce", 0))
+    st.session_state.pop(f"audio_{nonce}", None)
+    st.session_state.pop("voice-upload", None)
+    st.session_state.pop("voice_wav_bytes", None)
+    st.session_state["audio_nonce"] = nonce + 1
 
 
 # Streamlit 1.53.1 signature: set_page_config(page_title, page_icon, layout, initial_sidebar_state, menu_items).
@@ -580,33 +591,7 @@ def show_profile_setup(account) -> None:
 
 
 def show_voice_checkin() -> None:
-    if st.session_state.pop("_clear_voice_capture", False):
-        st.session_state.pop("voice-recording", None)
-        st.session_state.pop("voice-upload", None)
-    if st.session_state.pop("_clear_voice_text", False):
-        clear_voice_text()
-
     with st.expander("Voice check-in (record, then upload)", expanded=True):
-        # Streamlit 1.53.1 signature: container(*, border=None, key=None, width="stretch", height="content", horizontal=False, horizontal_alignment="left", vertical_alignment="top", gap="small").
-        with st.container(border=True, key="card_voice_transcript"):
-            transcript_heading, clear_transcript = st.columns(
-                (3, 1),
-                vertical_alignment="center",
-            )
-            transcript_heading.markdown("#### Transcript")
-            if clear_transcript.button("Clear", key="outline_clear_transcript"):
-                st.session_state["_clear_voice_text"] = True
-                st.session_state["_clear_voice_capture"] = True
-                st.rerun()
-            if "voice_transcript" not in st.session_state:
-                st.caption("Your transcript appears after the recording is sent.")
-            elif st.session_state["voice_transcript"]:
-                st.text_area(
-                    "Editable transcript",
-                    key="voice_transcript",
-                    height=120,
-                    on_change=clean_voice_transcript,
-                )
         st.write(
             "Record up to 60 seconds. Say how your flow, mood, energy, sleep, "
             "pain, and workout are going."
@@ -620,20 +605,41 @@ def show_voice_checkin() -> None:
             "to the local Phase API and is not saved in MongoDB. If microphone "
             "recording fails, upload an audio file or use the tap form below."
         )
-        with st.form("voice-checkin-form"):
+        with st.container(border=True, key="card_voice_transcript"):
+            transcript_heading, clear_transcript = st.columns(
+                (3, 1),
+                vertical_alignment="center",
+            )
+            transcript_heading.markdown("#### Live transcript")
+            if clear_transcript.button("Clear", key="outline_clear_transcript"):
+                discard_audio_capture()
+                clear_voice_text()
+                st.rerun()
             # Streamlit 1.53.1 signature: audio_input(label, *, sample_rate=16000, key=None, help=None, on_change=None, args=None, kwargs=None, disabled=False, label_visibility="visible", width="stretch").
-            voice_audio = st.audio_input(
-                "Record your check-in",
-                sample_rate=16000,
-                key="voice-recording",
-                help="Your browser may ask for microphone access.",
-            )
-            uploaded_audio = st.file_uploader(
-                "Or upload an audio file",
-                type=("wav", "mp3", "m4a", "mp4", "webm", "ogg"),
-                key="voice-upload",
-            )
-            transcribe_voice = st.form_submit_button("Transcribe with Cartesia")
+            with st.form("voice-checkin-form"):
+                voice_audio = st.audio_input(
+                    "Record your check-in",
+                    sample_rate=16000,
+                    key=f"audio_{int(st.session_state.get('audio_nonce', 0))}",
+                    help="Your browser may ask for microphone access.",
+                )
+                uploaded_audio = st.file_uploader(
+                    "Or upload an audio file",
+                    type=("wav", "mp3", "m4a", "mp4", "webm", "ogg"),
+                    key="voice-upload",
+                )
+                transcribe_voice = st.form_submit_button(
+                    "Transcribe with Cartesia"
+                )
+            if "voice_transcript" not in st.session_state:
+                st.caption("Luna is listening...")
+            elif st.session_state["voice_transcript"]:
+                st.text_area(
+                    "Editable transcript",
+                    key="voice_transcript",
+                    height=120,
+                    on_change=clean_voice_transcript,
+                )
         if transcribe_voice:
             audio = uploaded_audio if uploaded_audio is not None else voice_audio
             if audio is None:
@@ -666,7 +672,7 @@ def show_voice_checkin() -> None:
                             transcript
                         )
                         st.session_state["voice_transcribed"] = True
-                        st.session_state["_clear_voice_capture"] = True
+                        discard_audio_capture()
                         st.rerun()
                 except HTTPError as error:
                     try:
@@ -688,10 +694,6 @@ def show_voice_checkin() -> None:
                         "The transcription request timed out or returned invalid JSON."
                     )
 
-        if "voice_transcript" in st.session_state and not st.session_state.get(
-            "voice_transcript"
-        ):
-            st.session_state.pop("voice_transcript", None)
         if "voice_transcript" in st.session_state:
             if st.session_state.pop("voice_transcribed", False):
                 st.success(
@@ -901,8 +903,9 @@ def show_daily_checkin(account) -> None:
                 "Your answers were not saved; please try again."
             )
             st.stop()
+        clear_voice_text()
+        discard_audio_capture()
         st.session_state["_clear_checkin_state"] = True
-        st.session_state["_clear_voice_capture"] = True
         st.session_state["flow_step"] = "dashboard"
         st.rerun()
 
@@ -984,14 +987,11 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         st.session_state["flow_step"] = "checkin"
         st.rerun()
     if sign_out_col.button("Sign out", key="outline_sign_out_top"):
+        clear_voice_text()
+        discard_audio_capture()
         for key in (
             "account_id",
             "flow_step",
-            "voice_transcript",
-            "voice_extracted",
-            "voice_transcribed",
-            "voice-recording",
-            "voice-upload",
             *CHECKIN_INPUT_KEYS,
         ):
             st.session_state.pop(key, None)
@@ -1173,14 +1173,8 @@ if (
     st.stop()
 
 if st.session_state.pop("_clear_checkin_state", False):
-    for key in (
-        *CHECKIN_INPUT_KEYS,
-        "voice_transcript",
-        "voice_extracted",
-        "voice_transcribed",
-    ):
+    for key in CHECKIN_INPUT_KEYS:
         st.session_state.pop(key, None)
-    st.session_state["_clear_voice_capture"] = True
 
 if st.session_state.get("flow_step") != "dashboard":
     show_daily_checkin(account)
