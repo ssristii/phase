@@ -757,56 +757,38 @@ def show_daily_checkin(account) -> None:
         st.rerun()
 
 
-def phase_wheel(phase: str | None, cycle_day: int | None = None, cycle_length: float | None = None) -> None:
+def phase_wheel(
+    phase: str | None,
+    cycle_day: int | None = None,
+    cycle_length: float | None = None,
+    predicted_bleed: float | None = None,
+    ovulation_day: int | None = None,
+    symptom_mode: bool = False,
+) -> None:
+    import svg
+
     estimated_length = int(round(cycle_length)) if cycle_length else 28
     if estimated_length < 15:
         estimated_length = 28
-    if cycle_day is None:
-        progress = 0.0
-    else:
-        progress = min(max(cycle_day / estimated_length, 0.0), 1.0)
-    circumference = 2 * 3.14159265 * 84
-    dash = progress * circumference
-    gap = circumference - dash
-    center = phase or "No phase"
-    if cycle_day is not None:
-        subtitle = f"Day {cycle_day} of {estimated_length}"
-    else:
-        subtitle = "symptom guidance"
-    description = (
-        f"{phase} is highlighted on day {cycle_day} of an estimated "
-        f"{estimated_length}-day cycle."
-        if phase and cycle_day is not None
-        else ("No cycle phase is estimated." if phase is None else f"{phase} is highlighted.")
+    bleed = int(round(predicted_bleed)) if predicted_bleed else 5
+    bleed = min(8, max(2, bleed))
+    ovulation = int(ovulation_day) if ovulation_day else estimated_length - 14
+    mode = "symptom" if symptom_mode or phase is None else "phase"
+    svg_markup = svg.tide_wheel_svg(
+        day=cycle_day,
+        cycle_len=estimated_length,
+        bleed_len=bleed,
+        ovulation_day=ovulation,
+        mode=mode,
     )
-    st.markdown(
-        f"""
-        <div class="phase-wheel" role="img" aria-label="{description}">
-          <svg viewBox="0 0 200 200" width="100%" height="100%">
-            <circle cx="100" cy="100" r="84" fill="none" stroke="#E8DDC9" stroke-width="14"/>
-            <circle cx="100" cy="100" r="84" fill="none" stroke="#9B1B30" stroke-width="14"
-                    stroke-linecap="round"
-                    stroke-dasharray="{dash:.1f} {gap:.1f}"
-                    transform="rotate(-90 100 100)"/>
-            <circle cx="100" cy="100" r="62" fill="#F3E9D2" stroke="#C9A24B" stroke-width="2"/>
-          </svg>
-          <div class="phase-wheel-center">{center}<small>{subtitle}</small></div>
-        </div>
-        <div class="phase-legend">
-          {''.join(f'<span class="{"active" if phase == name else ""}">{name}</span>' for name in PHASES)}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if cycle_day is not None:
+    st.markdown(svg_markup, unsafe_allow_html=True)
+    if cycle_day is not None and mode == "phase":
         st.caption(
             f"Day {cycle_day} of an estimated {estimated_length}-day cycle. "
             "This is an orientation view, not a time-scale or fertility chart."
         )
-    else:
-        st.caption(
-            "Cycle timing is not estimated in symptom-based mode."
-        )
+    elif mode == "symptom":
+        st.caption("Cycle timing is not estimated in symptom-based mode.")
 
 
 def show_dashboard(account, profile: dict, checkin: dict) -> None:
@@ -939,6 +921,9 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                     prediction.phase,
                     cycle_day=prediction.cycle_day,
                     cycle_length=prediction.predicted_length,
+                    predicted_bleed=getattr(cycle_state, "predicted_bleed", None),
+                    ovulation_day=getattr(cycle_state, "ovulation_day", None),
+                    symptom_mode=prediction.phase is None,
                 )
                 st.subheader(f"Estimated phase: {prediction.phase}")
                 if prediction.population_default:

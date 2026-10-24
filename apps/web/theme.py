@@ -162,3 +162,20 @@ def inject_theme(star_positions):
         """,
         unsafe_allow_html=True,
     )
+    st.markdown(
+        """
+        <style>
+        .tide-drift { animation: tide-drift 6s linear infinite; }
+        @keyframes tide-drift {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(6px); }
+        }
+        .phase-pulse { animation: phase-pulse 2s ease-in-out infinite; transform-origin: center; }
+        @keyframes phase-pulse {
+            0%, 100% { opacity: .7; }
+            50% { opacity: 1; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
