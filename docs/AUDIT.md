@@ -5,13 +5,11 @@
 spec. The only real-device verification recorded in `docs/VERIFIED.md` is
 “None yet.”
 
-**Time estimate:** roughly 42–58 focused engineering hours for the required
+**Time estimate:** roughly 36–48 focused engineering hours for the adaptable
 product, safety, integration, report, test, and documentation gaps below,
 before external approvals or real-iPhone validation. That exceeds the stated
 12–16-hour window. The current Streamlit app remains runnable locally, but it
-is not the React/Vite PWA described in the spec. Reaching the required PWA
-stack conflicts with “do not rebuild or restructure”; no stack migration is
-assumed in this audit.
+is not the React/Vite PWA described in the spec.
 
 Severity: **P0** breaks the required demo or disqualifies a required track;
 **P1** materially weakens a required product or track; **P2** is polish that
@@ -19,7 +17,7 @@ should be deferred to the backlog.
 
 | Area | Current state from code | Gap | Severity | Fix | Estimate | Status |
 |---|---|---|---|---|---:|---|
-| Stack and runnable app | Browser UI is Streamlit (`apps/web/streamlit_app.py`); there is also an Expo shell whose only screen is a record/upload voice smoke test (`apps/mobile/app/index.tsx`). The API is Express (`apps/api/src`). | No React/Vite PWA, install flow, production mobile-first app, or hosted HTTPS experience. The required stack and “do not rebuild” constraint conflict. | P0 | Decide whether to migrate the actual product to React/Vite or revise the stack requirement. Keep the existing localhost app runnable until a replacement passes smoke tests. | 6–10h | Blocked on scope decision |
+| Stack and runnable app | Browser UI is Streamlit (`apps/web/streamlit_app.py`); there is also an Expo shell whose only screen is a record/upload voice smoke test (`apps/mobile/app/index.tsx`). The API is Express (`apps/api/src`). | No React/Vite PWA, install flow, production mobile-first app, or hosted HTTPS experience. The user selected keeping the current stack, so PWA-specific requirements are explicitly not met. | P0 | Keep Streamlit and Expo; do not migrate frameworks. Preserve the local browser app and adapt features within the existing apps. Do not claim PWA installability, web production, or PWA track proof. | 0h migration; remaining feature work still applies | Accepted scope limitation |
 | Onboarding and age gate | Account creation collects age; under-18 submissions are rejected before `create_account`. Profile collects last-period date/unsure, goal, up to five exercises, and dietary preference. | Missing workouts/week, split, Muscle and Endurance goals, and hormonal-contraception mode. Extra exercise and dietary fields must be removed. There is no separate polite block screen. | P0 | Replace profile fields with the specified schema and symptom mode; add tests proving under-18 data is never stored. | 2–3h | Not started |
 | Authentication and recovery | A one-time 10-character code is salted and hashed with PBKDF2-HMAC-SHA256 (200,000 iterations). Sign-in scans accounts. | Spec calls for argon2id or bcrypt, rate limiting/lockout, copy and backup file, two-device recovery behavior, and iOS storage-eviction handling. No identifier-payload test exists. | P1 | Add an approved password-hash implementation, throttling and lockout, backup/export, and auth/privacy tests; do not log health values or identifiers. | 3–5h | Not started |
 | Voice/audio check-in (G1) | Streamlit records then uploads through Cartesia transcription; user can edit the transcript and ask Gemini to extract structured fields. Expo is also record-then-upload. | Gemini receives transcript text, not audio. Cartesia is not live-streamed; no AudioWorklet/PCM pipeline, final-transcript-only workflow, explicit clear/discard behavior for an in-memory audio buffer, editable confirm card, name stripping, no-double-submit guard, or audio edge-case coverage. | P0 | After choosing the target client, follow the documented Cartesia streaming protocol and Gemini audio input contract; implement honest degradation, confirmation, clearing, and request-payload privacy tests. | 5–8h | Not started |
@@ -33,7 +31,7 @@ should be deferred to the backlog.
 | Escalation and safety | Existing code suppresses plans for no period at 90 days, very heavy flow, severe pain/pain >= 8, self-reported irregular cycles, or positive pregnancy test. | No pain >= 8 twice in three days, heavy flow three consecutive days, or 3-of-4 short/long cycle detector. Threshold logic is not fully history-backed or exhaustively tested; symptom mode is not implemented. | P0 | Implement the exact history-based fixed triggers and pain override; make every escalation suppress generated plans; add one test per trigger and combination. | 2–4h | Not started |
 | Clinician report and statistics (G8) | No report or PDF exists. | Missing computed statistics, cycle-length SVG chart, flags, generated narrative, “Self-reported data” label, PDF export, iOS share and fallback. | P1 | Add deterministic stats module and hand-computed fixtures; build client-side PDF and Web Share/open-Blob fallback. Never use Gemini to calculate statistics. | 4–6h | Not started |
 | Partner brief | No partner brief or share flow exists. | Missing generated plain-language brief, identifier exclusion, preview, and explicit user-tap sharing. | P1 | Implement schema-validated brief, preview, and user-initiated share only; do not send identifiers. | 1–2h | Not started |
-| Navigation and required screens | Streamlit dashboard uses four top tabs: Today, Workout, Groceries, and How this works; there is no bottom navigation. | Required five destinations (Today, Train, Meals, What might help, Report), check-in flow, confirmation screen, and removal of How this works are absent. | P0 | Implement the required navigation and screens in the selected client, preserving keyboard, accessibility, and mobile safe-area behavior. | 3–5h | Blocked on stack decision |
+| Navigation and required screens | Streamlit dashboard uses four top tabs: Today, Workout, Groceries, and How this works; there is no bottom navigation. | Required five destinations (Today, Train, Meals, What might help, Report), check-in flow, confirmation screen, and removal of How this works are absent. | P0 | Implement the required destinations using Streamlit tabs and the existing Expo shell where reachable; bottom-navigation/PWA behavior is out of scope under the selected stack. | 3–5h | Not started |
 | Transcript clear control | Streamlit offers “Clear voice text” after transcript creation; the control is in a two-column area and is absent before text exists. | Does not meet the always-visible 44px Clear control, empty-state treatment, audio-buffer discard, and restart-listening behavior. | P1 | Keep an accessible Clear control visible at all times and test empty/nonempty transcript and audio cleanup. | 1–2h | Not started |
 | Copy and prohibited language | The Streamlit, Expo, and problem/setup docs include disclaimer wording; UI and source include a “How this works” tab and dietary/grocery language. The phase page displays confidence and fertility estimates. | Violates the new copy restrictions, no-phase-words symptom mode, and removal of the disclaimer/footer, dietary, grocery, and confidence/percentage content. | P0 | Remove prohibited copy and obsolete screens/features from every shipped surface; add a scoped banned-string test, accounting for allowed identifiers/spec documentation. | 1–2h | Not started |
 | Visual design and accessibility | The Streamlit theme uses the prior “Victorian Gilt” palette, serif type, raised buttons, and styled phase wheel. | Does not match the new UI tokens or React PWA screen frame, ornaments, bottom navigation, Luna, pressed flowers, specified cards/chips, Nunito, reduced-motion behavior, or verified WCAG AA contrast. | P1 | Apply the exact current UI spec to all required screens, bundle fonts/illustrations, and test 390x844 plus contrast and reduced motion. | 5–8h | Not started |
@@ -54,20 +52,21 @@ should be deferred to the backlog.
 - Extra training-plan visual polish after generated-plan validation and workout
   logging are reliable.
 
-## Immediate decision required before implementation
+## Accepted implementation direction
 
-The spec simultaneously says not to rebuild/restructure and requires replacing
-the current Streamlit/Expo-shell product with a React/Vite PWA. These are not
-compatible. The audit records the current repository truth and keeps it
-runnable; no PWA migration or feature deletions are made until the target stack
-is resolved.
+The user selected **keep the current stack**. The product remains a Streamlit
+browser app with an Expo voice-test shell and Express API. This honors “do not
+rebuild or restructure” but knowingly leaves the React/Vite PWA, installability,
+safe-area implementation, and PWA deployment requirements unmet. The local
+Streamlit app remains the primary runnable demo; no PWA claims will be made.
 
 ## Phase 1 result
 
 - **Done:** audited the checked-in implementation and documented concrete gaps,
   severity, fixes, estimates, and the P2 backlog.
-- **Risky:** the required scope is estimated at 42–58 focused hours versus the
+- **Risky:** the adaptable scope is estimated at 36–48 focused hours versus the
   12–16 hours available; P0 work alone is larger than the remaining window.
-- **Cut:** no implementation cut is made in this audit. Moss remains unused;
-  the supplied new spec's never-cut requirements conflict with the previous
-  hackathon cut ladder, so the new spec is treated as controlling.
+- **Cut:** React/Vite PWA migration, installability, and PWA-specific proof are
+  out of scope by the user's stack decision. Moss remains unused; the supplied
+  new spec's never-cut requirements conflict with the previous hackathon cut
+  ladder, so the new spec is treated as controlling.
