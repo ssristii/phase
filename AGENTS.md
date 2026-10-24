@@ -2,14 +2,15 @@
 
 ## Project summary
 
-Phase is an iPhone app that adapts workouts and groceries to a user's cycle and
-reported daily state, with cited advice and clear safety limits.
+Phase is a cycle-aware workout and grocery planner. The hackathon prototype is
+browser-first with Streamlit to avoid shared-Wi-Fi device isolation; native
+iPhone delivery is deferred.
 
 ## Stack
 
-Expo, React Native, TypeScript, Expo Router, Expo Go on iPhone, and either a
-small Express server or Supabase Edge Functions. Use `expo-print` for PDFs.
-There is no web build.
+Streamlit and Python for the current browser prototype, with the existing
+Express server available for server-side sponsor integrations. Keep API keys
+out of the browser. Native mobile delivery is deferred.
 
 ## Non-negotiable rules
 
@@ -22,7 +23,8 @@ There is no web build.
   been read. Quote the relied-on signature in a code comment.
 - Keep the main branch runnable. Commit each completed task with a short,
   lowercase commit message.
-- Stop at each human checkpoint and provide exact iPhone test instructions.
+- At browser checkpoints provide exact browser test instructions. Never claim
+  browser testing as real-iPhone verification.
 
 ## Cut ladder
 

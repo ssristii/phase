@@ -8,4 +8,6 @@ coverage/
 apps/mobile/.env
 apps/api/.env
 *.tsbuildinfo
-
+__pycache__/
+*.py[cod]
+.streamlit/secrets.toml
