@@ -357,6 +357,11 @@ def show_voice_checkin() -> None:
             "to the local Phase API. If microphone "
             "recording fails, upload an audio file or use the tap form below."
         )
+        st.caption(
+            "For best accuracy, record in a quiet place, keep the microphone "
+            "close, and speak clearly. Background noise can reduce both "
+            "transcription and extracted check-in values."
+        )
         with st.container(border=True, key="card_voice_transcript"):
             # One header row: label left, Clear right, then body, then audio.
             # Clear must stay above the recorder (not in Streamlit chrome).
