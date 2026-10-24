@@ -56,11 +56,3 @@ track names when available).
 | 1:10–1:30 | Open the cited grocery list and clinician summary |
 | 1:30–1:50 | Show partner brief sharing only after a tap and hearted-plan lock |
 | 1:50–2:00 | Close on “phase is a starting prior; your data leads” and safety footer |
-
-**Interview checkpoint.** Ask each participant: “Think about the last time you
-planned exercise or food around your cycle: what did you do, and what was
-hardest?” Paste one anonymous quote per slot.
-
-1. Participant 1 quote: ______________________________________________
-2. Participant 2 quote: ______________________________________________
-3. Participant 3 quote: ______________________________________________
