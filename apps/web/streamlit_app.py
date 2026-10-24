@@ -357,6 +357,11 @@ def show_voice_checkin() -> None:
         with st.container(border=True, key="card_voice_transcript"):
             # One header row: label left, Clear right, then body, then audio.
             # Clear must stay above the recorder (not in Streamlit chrome).
+            pending_voice_transcript = st.session_state.pop(
+                "pending_voice_transcript", None
+            )
+            if isinstance(pending_voice_transcript, str):
+                st.session_state["voice_transcript"] = pending_voice_transcript
             has_transcript = bool(
                 str(st.session_state.get("voice_transcript") or "").strip()
             )
@@ -446,7 +451,7 @@ def show_voice_checkin() -> None:
                         # Keep WAV in memory for G1 only; discard on Clear/save.
                         st.session_state["voice_wav_bytes"] = audio.getvalue()
                         st.session_state["voice_wav_type"] = audio_type
-                        st.session_state["voice_transcript"] = strip_spoken_names(
+                        st.session_state["pending_voice_transcript"] = strip_spoken_names(
                             strip_emojis(transcript)
                         )
                         st.session_state["voice_transcribed"] = True
