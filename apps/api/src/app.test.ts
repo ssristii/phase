@@ -53,6 +53,33 @@ describe("Phase API smoke checks", () => {
     });
   });
 
+  it("surfaces missing Gemini credentials for G1 audio check-in", async () => {
+    const response = await fetch(`${baseUrl}/api/gemini/checkin-audio`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "audio/wav",
+        "X-Phase-Transcript": "I feel okay.",
+      },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      error: "GEMINI_API_KEY is not configured",
+    });
+  });
+
+  it("surfaces missing Gemini credentials for G2 readback text", async () => {
+    const response = await fetch(`${baseUrl}/api/gemini/readback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ summary: "Energy 3, sleep 7 hours." }),
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      error: "GEMINI_API_KEY is not configured",
+    });
+  });
+
   it("surfaces missing Cartesia credentials instead of returning sample success", async () => {
     const response = await fetch(`${baseUrl}/api/cartesia/readback`, {
       method: "POST",

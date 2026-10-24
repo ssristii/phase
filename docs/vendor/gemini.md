@@ -28,3 +28,21 @@ fields needed for the feature. Every system prompt must prohibit emojis.
 
 The Stage 2 hello-world is an opt-in server endpoint requiring
 `GEMINI_API_KEY`; it is not a verified product feature.
+
+## Audio understanding (G1)
+
+Official audio docs show inline audio on Interactions:
+
+```ts
+await client.interactions.create({
+  model: "gemini-3.8-flash",
+  input: [
+    { type: "text", text: "..." },
+    { type: "audio", data: base64Audio, mime_type: "audio/wav" },
+  ],
+});
+```
+
+Cadence uses this for `/api/gemini/checkin-audio` with a JSON schema for
+check-in fields. Do not send login codes or account IDs. Audio is held only
+in memory until the user confirms or clears the check-in.

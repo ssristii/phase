@@ -9,6 +9,20 @@ const geminiResponseSchema = z.object({ message: z.string().min(1) });
 const checkinRequestSchema = z.object({
   transcript: z.string().trim().min(1).max(4000),
 });
+const readbackRequestSchema = z.object({
+  summary: z.string().trim().min(1).max(500),
+});
+const g2ReadbackSchema = z.object({
+  readback: z.string().trim().min(1).max(280),
+});
+const g2ReadbackJsonSchema = {
+  type: "object",
+  properties: {
+    readback: { type: "string" },
+  },
+  required: ["readback"],
+  additionalProperties: false,
+};
 const extractedCheckinSchema = z
   .object({
     flow: z.enum([
@@ -167,6 +181,60 @@ export function createApp(config: AppConfig = {}): express.Express {
     }
   });
 
+  async function extractCheckinFields(
+    client: GoogleGenAI,
+    input:
+      | string
+      | Array<
+          | { type: "text"; text: string }
+          | { type: "audio"; data: string; mime_type: string }
+        >,
+  ) {
+    let extracted: z.infer<typeof extractedCheckinSchema> | undefined;
+    let lastValidationError: Error | undefined;
+
+    for (let attempt = 0; attempt < 2 && !extracted; attempt += 1) {
+      // Gemini audio docs: client.interactions.create({ model, input: [{type:"text"...},{type:"audio", data, mime_type}], ... })
+      // Structured output signature: response_format: { type: "text", mime_type: "application/json", schema }.
+      const interaction = await client.interactions.create({
+        model: "gemini-3.8-flash",
+        input,
+        store: false,
+        response_format: {
+          type: "text",
+          mime_type: "application/json",
+          schema: checkinJsonSchema,
+        },
+      });
+      const output = interaction.output_text;
+      if (!output) {
+        lastValidationError = new Error("Gemini returned no text output");
+        continue;
+      }
+      try {
+        extracted = extractedCheckinSchema.parse(JSON.parse(output));
+      } catch (error) {
+        lastValidationError =
+          error instanceof Error
+            ? error
+            : new Error("Gemini returned invalid check-in fields");
+      }
+    }
+
+    if (!extracted) {
+      throw lastValidationError ?? new Error("Gemini returned invalid fields");
+    }
+    return normalizeCheckinFields(extracted);
+  }
+
+  const checkinPromptLines = [
+    "Extract only health check-in details explicitly stated by the speaker.",
+    "Do not infer missing values. Use Not stated, 0, -1, or not stated as defined by the schema.",
+    "Map sleep to hours, energy to 1 through 5, and pain to 0 through 10 only when the user states a value.",
+    "Mark a yes/no item only when clearly stated; otherwise use not stated.",
+    "Ignore personal names. Do not use emojis. Return JSON matching the schema exactly.",
+  ];
+
   app.post("/api/gemini/checkin", async (request, response, next) => {
     if (!config.geminiApiKey) {
       response.status(503).json({ error: "GEMINI_API_KEY is not configured" });
@@ -184,49 +252,126 @@ export function createApp(config: AppConfig = {}): express.Express {
     try {
       const client = new GoogleGenAI({ apiKey: config.geminiApiKey });
       const prompt = [
-        "Extract only health check-in details explicitly stated in the transcript.",
-        "Do not infer missing values. Use Not stated, 0, -1, or not stated as defined by the schema.",
-        "Map sleep to hours, energy to 1 through 5, and pain to 0 through 10 only when the user states a value.",
-        "Mark a yes/no item only when the transcript clearly states it; otherwise use not stated.",
-        "Do not use emojis. Return JSON matching the schema exactly.",
+        ...checkinPromptLines,
         "",
         "Transcript to extract:",
         requestResult.data.transcript,
       ].join("\n");
-      let extracted: z.infer<typeof extractedCheckinSchema> | undefined;
-      let lastValidationError: Error | undefined;
+      const fields = await extractCheckinFields(client, prompt);
+      response.json({ fields, source: "transcript" });
+    } catch (error) {
+      next(error);
+    }
+  });
 
-      for (let attempt = 0; attempt < 2 && !extracted; attempt += 1) {
-        // Gemini docs signature: client.interactions.create({ model, input, response_format: { type: "text", mime_type: "application/json", schema } }).
-        const interaction = await client.interactions.create({
-          model: "gemini-3.8-flash",
-          input: prompt,
-          store: false,
-          response_format: {
-            type: "text",
-            mime_type: "application/json",
-            schema: checkinJsonSchema,
-          },
+  // G1: audio understanding. Prefer WAV + final transcript; never store either.
+  app.post(
+    "/api/gemini/checkin-audio",
+    express.raw({
+      type: [
+        "audio/wav",
+        "audio/x-wav",
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/webm",
+        "audio/ogg",
+        "audio/mp4",
+      ],
+      limit: "10mb",
+    }),
+    async (request, response, next) => {
+      if (!config.geminiApiKey) {
+        response.status(503).json({ error: "GEMINI_API_KEY is not configured" });
+        return;
+      }
+      const audioContentType = request.headers["content-type"]
+        ?.split(";")[0]
+        .toLowerCase();
+      const mimeType = {
+        "audio/wav": "audio/wav",
+        "audio/x-wav": "audio/wav",
+        "audio/mpeg": "audio/mp3",
+        "audio/mp3": "audio/mp3",
+        "audio/webm": "audio/webm",
+        "audio/ogg": "audio/ogg",
+        "audio/mp4": "audio/mp4",
+      }[audioContentType ?? ""];
+      if (!mimeType) {
+        response.status(415).json({
+          error: "Upload WAV, MP3, WebM, Ogg, or MP4 audio for G1",
         });
-        const output = interaction.output_text;
-        if (!output) {
-          lastValidationError = new Error("Gemini returned no text output");
-          continue;
-        }
-        try {
-          extracted = extractedCheckinSchema.parse(JSON.parse(output));
-        } catch (error) {
-          lastValidationError =
-            error instanceof Error
-              ? error
-              : new Error("Gemini returned invalid check-in fields");
-        }
+        return;
+      }
+      if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
+        response.status(400).json({ error: "Audio bytes are required" });
+        return;
       }
 
-      if (!extracted) {
-        throw lastValidationError ?? new Error("Gemini returned invalid fields");
+      const transcriptHeader = request.headers["x-phase-transcript"];
+      const transcript =
+        typeof transcriptHeader === "string" ? transcriptHeader.trim() : "";
+
+      try {
+        const client = new GoogleGenAI({ apiKey: config.geminiApiKey });
+        const textPart = [
+          ...checkinPromptLines,
+          "Use the audio as the primary signal. The optional transcript is a helper only.",
+          transcript ? `Helper transcript:\n${transcript.slice(0, 4000)}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const fields = await extractCheckinFields(client, [
+          { type: "text", text: textPart },
+          {
+            type: "audio",
+            data: request.body.toString("base64"),
+            mime_type: mimeType,
+          },
+        ]);
+        response.json({ fields, source: "audio" });
+      } catch (error) {
+        next(error);
       }
-      response.json({ fields: normalizeCheckinFields(extracted) });
+    },
+  );
+
+  // G2: one or two sentence spoken readback text (Sonic speaks it separately).
+  app.post("/api/gemini/readback", async (request, response, next) => {
+    if (!config.geminiApiKey) {
+      response.status(503).json({ error: "GEMINI_API_KEY is not configured" });
+      return;
+    }
+    const parsed = readbackRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      response.status(400).json({ error: "Provide a short check-in summary" });
+      return;
+    }
+    try {
+      const client = new GoogleGenAI({ apiKey: config.geminiApiKey });
+      const prompt = [
+        "Write one or two short spoken sentences confirming the user's check-in.",
+        "Warm, plain language. No medical diagnosis language. No emojis.",
+        "Do not invent details that are not in the summary.",
+        "",
+        "Confirmed check-in summary:",
+        parsed.data.summary,
+      ].join("\n");
+      // Gemini docs signature: client.interactions.create({ model, input, response_format }).
+      const interaction = await client.interactions.create({
+        model: "gemini-3.8-flash",
+        input: prompt,
+        store: false,
+        response_format: {
+          type: "text",
+          mime_type: "application/json",
+          schema: g2ReadbackJsonSchema,
+        },
+      });
+      const output = interaction.output_text;
+      if (!output) {
+        throw new Error("Gemini returned no readback text");
+      }
+      response.json(g2ReadbackSchema.parse(JSON.parse(output)));
     } catch (error) {
       next(error);
     }
@@ -317,11 +462,21 @@ export function createApp(config: AppConfig = {}): express.Express {
     },
   );
 
-  app.post("/api/cartesia/readback", async (_request, response, next) => {
+  app.post("/api/cartesia/readback", async (request, response, next) => {
     if (!config.cartesiaApiKey) {
       response.status(503).json({ error: "CARTESIA_API_KEY is not configured" });
       return;
     }
+
+    const bodyResult = z
+      .object({
+        transcript: z.string().trim().min(1).max(500).optional(),
+      })
+      .safeParse(request.body ?? {});
+    const transcript =
+      bodyResult.success && bodyResult.data.transcript
+        ? bodyResult.data.transcript
+        : "Hello. This is the Phase voice playback check.";
 
     try {
       // Cartesia API signature: POST /tts/bytes with { model_id, transcript, voice, output_format }.
@@ -334,7 +489,7 @@ export function createApp(config: AppConfig = {}): express.Express {
         },
         body: JSON.stringify({
           model_id: "sonic-3.6",
-          transcript: "Hello. This is the Phase voice playback check.",
+          transcript,
           voice: "694f9389-aac1-45b6-b726-9d9369183238",
           output_format: {
             container: "mp3",
@@ -342,7 +497,7 @@ export function createApp(config: AppConfig = {}): express.Express {
             bit_rate: 128000,
           },
         }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(3000),
       });
       if (!providerResponse.ok) {
         response.status(502).json({

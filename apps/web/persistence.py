@@ -121,6 +121,49 @@ def get_checkin(checkins, account_id: str, checkin_date: date):
     )
 
 
+def list_checkins(checkins, account_id: str) -> list[dict]:
+    rows = list(checkins.find({"account_id": account_id}))
+    return sorted(rows, key=lambda item: item.get("checkin_date", ""))
+
+
+def get_readiness_weights(model_weights, account_id: str) -> list[float] | None:
+    record = model_weights.find_one(
+        {"account_id": account_id, "model": "m2_readiness"}
+    )
+    if not record:
+        return None
+    weights = record.get("weights")
+    if not isinstance(weights, list) or len(weights) != 9:
+        return None
+    return [float(value) for value in weights]
+
+
+def save_readiness_weights(
+    model_weights,
+    account_id: str,
+    weights: list[float],
+    *,
+    version: int = 1,
+) -> None:
+    model_weights.replace_one(
+        {"account_id": account_id, "model": "m2_readiness"},
+        {
+            "account_id": account_id,
+            "model": "m2_readiness",
+            "version": version,
+            "weights": [float(value) for value in weights],
+            "updated_at": datetime.now(timezone.utc),
+        },
+        upsert=True,
+    )
+
+
+def reset_readiness_weights(model_weights, account_id: str) -> None:
+    model_weights.delete_one(
+        {"account_id": account_id, "model": "m2_readiness"}
+    )
+
+
 def add_phase_heart(
     hearts,
     account_id: str,

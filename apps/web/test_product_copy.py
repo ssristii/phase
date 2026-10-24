@@ -43,13 +43,18 @@ class ProductCopyTests(unittest.TestCase):
         )
         self.assertIn('key=f"audio_{int(st.session_state.get(\'audio_nonce\', 0))}"', content)
         self.assertIn('st.session_state["audio_nonce"] = nonce + 1', content)
+        self.assertIn("discard_g1_audio()", content)
         self.assertIn('st.session_state.pop("voice_wav_bytes", None)', content)
+        self.assertIn("/api/gemini/checkin-audio", content)
+        self.assertIn("/api/gemini/readback", content)
         self.assertIn('st.session_state.pop("voice_g1_result", None)', content)
         self.assertIn('st.session_state.pop("voice_confirm_fields", None)', content)
-        self.assertLess(
-            content.index('clear_transcript.button("Clear"'),
-            content.index("voice_audio = st.audio_input("),
-        )
+        clear_at = content.index('clear_transcript.button("Clear')
+        body_empty_at = content.index("Luna is listening...")
+        audio_at = content.index("voice_audio = st.audio_input(")
+        self.assertLess(clear_at, body_empty_at)
+        self.assertLess(body_empty_at, audio_at)
+        self.assertIn("outline_clear_transcript_dim", content)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
+from models import build_cycle_model, default_readiness_weights
 from persistence import (
     add_phase_heart,
     authenticate_account,
@@ -18,6 +19,8 @@ from persistence import (
     count_phase_hearts,
     get_checkin,
     get_phase_lock,
+    get_readiness_weights,
+    list_checkins,
     lock_phase_plan,
     save_checkin,
     save_phase_workout_plan,
@@ -75,9 +78,20 @@ def strip_emojis(text: str) -> str:
     return EMOJI_PATTERN.sub("", text)
 
 
+# Conservative spoken-name scrub before any storage of free text.
+NAME_PATTERN = re.compile(
+    r"\b(?:my name is|i am|i'm|this is)\s+[A-Z][a-z]{1,30}\b",
+    re.IGNORECASE,
+)
+
+
+def strip_spoken_names(text: str) -> str:
+    return NAME_PATTERN.sub(lambda match: match.group(0).split()[0] + " [name]", text)
+
+
 def clean_voice_transcript() -> None:
-    st.session_state["voice_transcript"] = strip_emojis(
-        st.session_state.get("voice_transcript", "")
+    st.session_state["voice_transcript"] = strip_spoken_names(
+        strip_emojis(st.session_state.get("voice_transcript", ""))
     )
 
 
@@ -85,17 +99,23 @@ def clear_voice_text() -> None:
     st.session_state.pop("voice_transcript", None)
     st.session_state.pop("voice_extracted", None)
     st.session_state.pop("voice_transcribed", None)
-    st.session_state.pop("voice_wav_bytes", None)
     st.session_state.pop("voice_g1_result", None)
     st.session_state.pop("voice_confirm_fields", None)
+    st.session_state.pop("voice_field_provenance", None)
+    discard_g1_audio()
 
 
 def discard_audio_capture() -> None:
+    """Reset the recorder widget. Does not drop G1 WAV held for extraction."""
     nonce = int(st.session_state.get("audio_nonce", 0))
     st.session_state.pop(f"audio_{nonce}", None)
     st.session_state.pop("voice-upload", None)
-    st.session_state.pop("voice_wav_bytes", None)
     st.session_state["audio_nonce"] = nonce + 1
+
+
+def discard_g1_audio() -> None:
+    st.session_state.pop("voice_wav_bytes", None)
+    st.session_state.pop("voice_wav_type", None)
 
 
 # Streamlit 1.53.1 signature: set_page_config(page_title, page_icon, layout, initial_sidebar_state, menu_items).
@@ -278,12 +298,37 @@ st.markdown(
         box-shadow: 0 3px 7px rgba(43, 27, 23, 0.3), inset 0 -2px 5px rgba(0, 0, 0, 0.42);
     }
     .st-key-outline_clear_transcript button,
+    .st-key-outline_clear_transcript_dim button,
     .st-key-outline_edit_checkin_top button,
     .st-key-outline_sign_out_top button {
         background: rgba(247, 242, 231, 0.75) !important;
         color: var(--cherry) !important;
         border: 1.5px solid var(--gold) !important;
         box-shadow: 0 3px 8px rgba(43, 27, 23, 0.12) !important;
+        border-radius: 999px !important;
+        min-height: 44px !important;
+        white-space: nowrap !important;
+    }
+    /* Dimmed Clear keeps at least ~3:1 on parchment (wine-tint on cream). */
+    .st-key-outline_clear_transcript_dim button {
+        color: #7A4A52 !important;
+        border-color: rgba(201, 162, 75, 0.65) !important;
+        background: rgba(247, 242, 231, 0.45) !important;
+        box-shadow: none !important;
+    }
+    .st-key-card_voice_transcript [data-testid="stHorizontalBlock"] {
+        align-items: center;
+        margin-bottom: 0.15rem;
+    }
+    .st-key-card_voice_transcript .transcript-empty {
+        font-family: "Cormorant Garamond", "Palatino Linotype", Georgia, serif;
+        font-style: italic;
+        color: #F3E5AB;
+        margin: 0.35rem 0 0.55rem;
+    }
+    .st-key-card_voice_transcript [data-testid="stTextArea"] textarea {
+        font-family: "Cormorant Garamond", "Palatino Linotype", Georgia, serif !important;
+        font-size: 1.05rem !important;
     }
     [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
         width: 32px !important;
@@ -432,6 +477,9 @@ def connect_database(uri: str, database_name: str):
     )
     database.phase_locks.create_index(
         [("account_id", 1), ("phase", 1)], unique=True
+    )
+    database.model_weights.create_index(
+        [("account_id", 1), ("model", 1)], unique=True
     )
     return database
 
@@ -606,15 +654,40 @@ def show_voice_checkin() -> None:
             "recording fails, upload an audio file or use the tap form below."
         )
         with st.container(border=True, key="card_voice_transcript"):
+            # One header row: label left, Clear right, then body, then audio.
+            # Clear must stay above the recorder (not in Streamlit chrome).
+            has_transcript = bool(
+                str(st.session_state.get("voice_transcript") or "").strip()
+            )
             transcript_heading, clear_transcript = st.columns(
                 (3, 1),
                 vertical_alignment="center",
+                gap="small",
             )
-            transcript_heading.markdown("#### Live transcript")
-            if clear_transcript.button("Clear", key="outline_clear_transcript"):
+            # Honest label while record-then-upload is the only path (not live).
+            transcript_heading.markdown("#### Transcript")
+            clear_key = (
+                "outline_clear_transcript"
+                if has_transcript
+                else "outline_clear_transcript_dim"
+            )
+            if clear_transcript.button("Clear ×", key=clear_key):
                 discard_audio_capture()
                 clear_voice_text()
                 st.rerun()
+            if has_transcript:
+                st.text_area(
+                    "Editable transcript",
+                    key="voice_transcript",
+                    height=120,
+                    label_visibility="collapsed",
+                    on_change=clean_voice_transcript,
+                )
+            else:
+                st.markdown(
+                    '<p class="transcript-empty">Luna is listening...</p>',
+                    unsafe_allow_html=True,
+                )
             # Streamlit 1.53.1 signature: audio_input(label, *, sample_rate=16000, key=None, help=None, on_change=None, args=None, kwargs=None, disabled=False, label_visibility="visible", width="stretch").
             with st.form("voice-checkin-form"):
                 voice_audio = st.audio_input(
@@ -630,15 +703,6 @@ def show_voice_checkin() -> None:
                 )
                 transcribe_voice = st.form_submit_button(
                     "Transcribe with Cartesia"
-                )
-            if "voice_transcript" not in st.session_state:
-                st.caption("Luna is listening...")
-            elif st.session_state["voice_transcript"]:
-                st.text_area(
-                    "Editable transcript",
-                    key="voice_transcript",
-                    height=120,
-                    on_change=clean_voice_transcript,
                 )
         if transcribe_voice:
             audio = uploaded_audio if uploaded_audio is not None else voice_audio
@@ -668,8 +732,11 @@ def show_voice_checkin() -> None:
                             "Cartesia returned an empty transcript. Try recording again."
                         )
                     else:
-                        st.session_state["voice_transcript"] = strip_emojis(
-                            transcript
+                        # Keep WAV in memory for G1 only; discard on Clear/save.
+                        st.session_state["voice_wav_bytes"] = audio.getvalue()
+                        st.session_state["voice_wav_type"] = audio_type
+                        st.session_state["voice_transcript"] = strip_spoken_names(
+                            strip_emojis(transcript)
                         )
                         st.session_state["voice_transcribed"] = True
                         discard_audio_capture()
@@ -708,25 +775,47 @@ def show_voice_checkin() -> None:
                 "Extract check-in values",
                 key="extract-voice-fields",
             ):
-                transcript = strip_emojis(
-                    st.session_state["voice_transcript"]
+                transcript = strip_spoken_names(
+                    strip_emojis(st.session_state["voice_transcript"])
                 ).strip()
                 if not transcript:
                     st.error("Enter or correct the transcript before extraction.")
                 else:
-                    request = Request(
-                        "http://127.0.0.1:4000/api/gemini/checkin",
-                        data=json.dumps({"transcript": transcript}).encode("utf-8"),
-                        headers={"Content-Type": "application/json"},
-                        method="POST",
-                    )
+                    wav_bytes = st.session_state.get("voice_wav_bytes")
+                    wav_type = st.session_state.get("voice_wav_type", "audio/wav")
                     try:
+                        if isinstance(wav_bytes, (bytes, bytearray)) and wav_bytes:
+                            # G1 multimodal path: audio + helper transcript.
+                            request = Request(
+                                "http://127.0.0.1:4000/api/gemini/checkin-audio",
+                                data=bytes(wav_bytes),
+                                headers={
+                                    "Content-Type": str(wav_type),
+                                    "X-Phase-Transcript": transcript[:4000],
+                                },
+                                method="POST",
+                            )
+                        else:
+                            request = Request(
+                                "http://127.0.0.1:4000/api/gemini/checkin",
+                                data=json.dumps(
+                                    {"transcript": transcript}
+                                ).encode("utf-8"),
+                                headers={"Content-Type": "application/json"},
+                                method="POST",
+                            )
                         with urlopen(request, timeout=45) as response:
                             payload = json.loads(response.read().decode("utf-8"))
                         fields = payload.get("fields")
                         if not isinstance(fields, dict):
                             raise ValueError("Gemini returned invalid check-in fields.")
                         st.session_state["voice_extracted"] = fields
+                        st.session_state["voice_g1_result"] = fields
+                        st.session_state["voice_field_provenance"] = {
+                            key: "Heard in your voice"
+                            for key, value in fields.items()
+                            if value is not None
+                        }
                         input_keys = {
                             "flow": "checkin-flow",
                             "mood": "checkin-mood",
@@ -743,7 +832,8 @@ def show_voice_checkin() -> None:
                                 st.session_state[key] = fields[field]
                         st.success(
                             "Review the suggested values in the tap form and correct "
-                            "anything that does not match how you feel."
+                            "anything that does not match how you feel. "
+                            "Heard fields are tagged until you confirm them."
                         )
                         st.rerun()
                     except HTTPError as error:
@@ -841,16 +931,19 @@ def show_daily_checkin(account) -> None:
             FLOWS,
             key="checkin-flow",
         )
+        provenance = st.session_state.get("voice_field_provenance") or {}
         mood = st.selectbox(
             "Mood",
             MOODS,
             key="checkin-mood",
+            help=provenance.get("mood"),
         )
         energy = st.slider(
             "Energy",
             min_value=1,
             max_value=5,
             key="checkin-energy",
+            help=provenance.get("energy"),
         )
         sleep = st.slider(
             "Sleep (hours)",
@@ -858,13 +951,20 @@ def show_daily_checkin(account) -> None:
             max_value=12.0,
             step=0.5,
             key="checkin-sleep",
+            help=provenance.get("sleep_hours"),
         )
         pain = st.slider(
             "Pain (0 to 10)",
             min_value=0,
             max_value=10,
             key="checkin-pain",
+            help=provenance.get("pain"),
         )
+        if provenance:
+            st.caption(
+                "Fields marked Heard in your voice came from your recording. "
+                "Edit anything that is wrong before continuing."
+            )
         workout_done = st.checkbox(
             "I completed a workout",
             key="checkin-workout-done",
@@ -903,8 +1003,44 @@ def show_daily_checkin(account) -> None:
                 "Your answers were not saved; please try again."
             )
             st.stop()
+        # G2 readback text, then Sonic (3s). On failure, keep text only.
+        summary = (
+            f"Mood {mood}, energy {energy} of 5, sleep {sleep:g} hours, "
+            f"pain {pain} of 10, flow {flow}."
+        )
+        readback_text = (
+            f"Got it. Mood {mood}, energy {energy} of 5, "
+            f"about {sleep:g} hours of sleep."
+        )
+        try:
+            g2_request = Request(
+                "http://127.0.0.1:4000/api/gemini/readback",
+                data=json.dumps({"summary": summary}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(g2_request, timeout=8) as response:
+                g2_payload = json.loads(response.read().decode("utf-8"))
+            candidate = g2_payload.get("readback")
+            if isinstance(candidate, str) and candidate.strip():
+                readback_text = strip_emojis(candidate.strip())
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            pass
+        st.session_state["voice_readback_text"] = readback_text
+        try:
+            tts_request = Request(
+                "http://127.0.0.1:4000/api/cartesia/readback",
+                data=json.dumps({"transcript": readback_text}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(tts_request, timeout=3.5) as response:
+                st.session_state["voice_readback_audio"] = response.read()
+        except (HTTPError, URLError, TimeoutError):
+            st.session_state.pop("voice_readback_audio", None)
         clear_voice_text()
         discard_audio_capture()
+        discard_g1_audio()
         st.session_state["_clear_checkin_state"] = True
         st.session_state["flow_step"] = "dashboard"
         st.rerun()
@@ -956,18 +1092,43 @@ def phase_wheel(phase: str | None) -> None:
 
 def show_dashboard(account, profile: dict, checkin: dict) -> None:
     unsure = profile.get("cycle_date_unsure", False)
+    tracking_mode = profile.get(
+        "cycle_tracking_mode",
+        "unsure" if unsure else "period_date",
+    )
     last_period_raw = profile.get("last_period_start")
     last_period = (
         date.fromisoformat(last_period_raw)
-        if last_period_raw and not unsure
+        if last_period_raw and tracking_mode == "period_date"
         else None
     )
-    cycle_length = profile.get("cycle_length")
+    try:
+        history = list_checkins(database.checkins, account["_id"])
+    except PyMongoError:
+        history = []
+    readiness_weights = None
+    try:
+        readiness_weights = get_readiness_weights(
+            database.model_weights,
+            account["_id"],
+        )
+    except PyMongoError:
+        readiness_weights = None
+    if readiness_weights is None:
+        readiness_weights = default_readiness_weights()
+
+    cycle_state = build_cycle_model(
+        history,
+        today=TODAY,
+        tracking_mode=tracking_mode,
+        last_period_start=last_period,
+    )
     prediction = predict_cycle(
         today=TODAY,
         last_period_start=last_period,
-        cycle_length=cycle_length,
-        unsure=unsure,
+        unsure=tracking_mode != "period_date",
+        checkins=history,
+        tracking_mode=tracking_mode,
     )
     safety = evaluate_safety(
         today=TODAY,
@@ -977,6 +1138,8 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         severe_pain=checkin["severe_pain"],
         persistently_irregular_cycles=checkin["persistently_irregular_cycles"],
         positive_pregnancy_test=checkin["positive_pregnancy_test"],
+        checkins=history,
+        cycle_lengths=cycle_state.valid_cycle_lengths,
     )
 
     edit_checkin_col, sign_out_col = st.columns((1, 1))
@@ -999,6 +1162,16 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
 
     st.title("Your Cadence dashboard")
     st.caption("Your reported state leads today's plan.")
+    readback_text = st.session_state.get("voice_readback_text")
+    if isinstance(readback_text, str) and readback_text.strip():
+        with st.container(border=True, key="card_luna_readback"):
+            st.markdown("**Luna**")
+            st.write(readback_text)
+            audio_bytes = st.session_state.get("voice_readback_audio")
+            if isinstance(audio_bytes, (bytes, bytearray)) and audio_bytes:
+                st.audio(bytes(audio_bytes), format="audio/mp3")
+            else:
+                st.caption("Spoken readback unavailable; showing text only.")
     weekly_schedule = None
     locked_plan = None
     if not safety.suppress_plan:
@@ -1011,6 +1184,8 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
             sleep_hours=checkin["sleep_hours"],
             pain=checkin["pain"],
             today=TODAY,
+            mood=checkin.get("mood", "Okay"),
+            readiness_weights=readiness_weights,
         )
         if prediction.phase:
             locked_plan = get_phase_lock(

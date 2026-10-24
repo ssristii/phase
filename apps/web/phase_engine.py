@@ -1,5 +1,16 @@
 from dataclasses import dataclass
 from datetime import date
+from typing import Sequence
+
+from models import (
+    build_cycle_model,
+    default_readiness_weights,
+    encode_readiness_features,
+    evaluate_escalation,
+    phase_for_day,
+    predict_readiness,
+    readiness_plan_multiplier,
+)
 
 
 PHASES = ("Menstrual", "Follicular", "Ovulatory", "Luteal")
@@ -54,6 +65,8 @@ class CyclePrediction:
     cycle_day: int | None
     fertile_window: tuple[int, int] | None
     population_default: bool
+    symptom_mode: bool = False
+    predicted_length: float | None = None
 
 
 @dataclass(frozen=True)
@@ -70,53 +83,35 @@ def predict_cycle(
     last_period_start: date | None,
     cycle_length: int | None = None,
     unsure: bool = False,
+    checkins: Sequence[dict] | None = None,
+    tracking_mode: str | None = None,
 ) -> CyclePrediction:
-    if unsure:
-        return CyclePrediction(
-            phase=None,
-            confidence=None,
-            reason=(
-                "Cycle timing is not estimated in this mode; daily guidance "
-                "uses the symptoms you report."
-            ),
-            cycle_day=None,
-            fertile_window=None,
-            population_default=False,
-        )
-    if last_period_start is None:
+    """Estimate phase via M1. Confidence is never for display (always None)."""
+    del cycle_length  # learned from logs; retained in signature for callers
+    mode = tracking_mode
+    if mode is None:
+        mode = "unsure" if unsure else "period_date"
+    if mode == "period_date" and last_period_start is None and not checkins:
         raise ValueError("Enter a last period start date or choose unsure.")
-    if last_period_start > today:
+    if last_period_start is not None and last_period_start > today:
         raise ValueError("Last period start cannot be in the future.")
-    if cycle_length is not None and not 21 <= cycle_length <= 35:
-        raise ValueError("Cycle length must be between 21 and 35 days.")
 
-    population_default = cycle_length is None
-    length = cycle_length or 28
-    cycle_day = (today - last_period_start).days % length + 1
-    if cycle_day <= 5:
-        phase = "Menstrual"
-    elif cycle_day <= 13:
-        phase = "Follicular"
-    elif cycle_day <= 16:
-        phase = "Ovulatory"
-    else:
-        phase = "Luteal"
-
-    confidence = 0.3 if population_default else 0.45
-    basis = "typical cycle timing" if population_default else "your reported period start"
-    reason = (
-        f"{phase} is estimated from {basis}; "
-        "logged symptoms take priority."
+    state = build_cycle_model(
+        checkins or [],
+        today=today,
+        tracking_mode=mode,
+        last_period_start=last_period_start,
     )
-    ovulation_day = length - 14
-    fertile_window = (max(1, ovulation_day - 5), min(length, ovulation_day + 1))
+    day = phase_for_day(state, today=today)
     return CyclePrediction(
-        phase=phase,
-        confidence=confidence,
-        reason=reason,
-        cycle_day=cycle_day,
-        fertile_window=fertile_window,
-        population_default=population_default,
+        phase=day.phase,
+        confidence=None,
+        reason=day.message,
+        cycle_day=day.cycle_day,
+        fertile_window=None if state.symptom_mode else state.fertile_window,
+        population_default=state.observed_cycle_count == 0,
+        symptom_mode=state.symptom_mode,
+        predicted_length=state.predicted_length,
     )
 
 
@@ -128,19 +123,60 @@ def evaluate_safety(
     severe_pain: bool,
     persistently_irregular_cycles: bool,
     positive_pregnancy_test: bool,
+    checkins: Sequence[dict] | None = None,
+    cycle_lengths: Sequence[int] | None = None,
 ) -> SafetyResult:
-    alerts: list[str] = []
-    if last_period_start and (today - last_period_start).days >= 90:
-        alerts.append("No period has been reported for 90 or more days.")
-    if flow == "Very heavy":
-        alerts.append("Very heavy bleeding was reported.")
+    """Fixed escalation rules. History-backed when checkins are provided."""
+    history = list(checkins or [])
+    if not any(
+        (
+            item.get("checkin_date") == today
+            or item.get("checkin_date") == today.isoformat()
+        )
+        for item in history
+    ):
+        history.append(
+            {
+                "checkin_date": today,
+                "flow": flow,
+                "pain": pain,
+            }
+        )
+    if last_period_start is not None and not any(
+        is_bleeding_proxy(item) for item in history
+    ):
+        history.append(
+            {
+                "checkin_date": last_period_start,
+                "flow": "Light",
+                "pain": 0,
+            }
+        )
+
+    alerts = list(
+        evaluate_escalation(
+            today=today,
+            checkins=history,
+            cycle_lengths=cycle_lengths or (),
+            positive_pregnancy_test=positive_pregnancy_test,
+        )
+    )
+    # Keep single-day hard signals used by the existing UI checkboxes.
     if severe_pain or pain >= 8:
-        alerts.append("Severe pain was reported.")
-    if persistently_irregular_cycles:
+        if not any("Pain of 8" in alert or "Severe pain" in alert for alert in alerts):
+            alerts.append("Severe pain was reported.")
+    if flow == "Very heavy" and not any("Heavy flow" in alert for alert in alerts):
+        alerts.append("Very heavy bleeding was reported.")
+    if persistently_irregular_cycles and not any(
+        "Three of the last four" in alert for alert in alerts
+    ):
         alerts.append("Persistently short or long cycles were reported.")
-    if positive_pregnancy_test:
-        alerts.append("A positive pregnancy test was reported.")
     return SafetyResult(tuple(alerts))
+
+
+def is_bleeding_proxy(item: dict) -> bool:
+    flow = item.get("flow")
+    return flow in {"Light", "Moderate", "Heavy", "Very heavy", "Medium"}
 
 
 def build_plan(
@@ -150,7 +186,26 @@ def build_plan(
     energy: int,
     sleep_hours: float,
     pain: int,
-) -> dict[str, str | int]:
+    mood: str = "Okay",
+    readiness_weights: Sequence[float] | None = None,
+) -> dict[str, str | int | float]:
+    weights = (
+        list(readiness_weights)
+        if readiness_weights is not None
+        else default_readiness_weights()
+    )
+    features = encode_readiness_features(
+        sleep_hours=sleep_hours,
+        energy=energy,
+        pain=pain,
+        mood=mood,
+        phase=phase,
+    )
+    readiness = predict_readiness(weights, features)
+    # Hard override: pain >= 8 today forces recovery.
+    tier = "recovery" if pain >= 8 else readiness.tier
+    multiplier = readiness_plan_multiplier(tier)
+
     intensity = 2
     if phase == "Follicular":
         intensity = 3
@@ -159,13 +214,28 @@ def build_plan(
     elif phase == "Luteal":
         intensity = 2
 
-    adjusted = False
-    if (sleep_hours < 6 and pain >= 6) or energy <= 2 or pain >= 8:
+    if tier == "recovery" or multiplier == 0.0:
+        intensity = 1
+        adjusted = True
+        sets = 2
+        reps = "easy mobility and an easy walk"
+        effort = "gentle"
+    elif tier == "reduce":
         intensity = max(1, intensity - 1)
         adjusted = True
+        base_sets = 2 if intensity == 1 else 3
+        sets = max(2, round(base_sets * 0.8))
+        reps = "6 to 8 controlled reps" if intensity == 1 else "8 to 10 comfortable reps"
+        effort = ("gentle", "moderate", "challenging")[intensity - 1]
+    else:
+        adjusted = False
+        sets = 2 if intensity == 1 else 3
+        reps = "6 to 8 controlled reps" if intensity == 1 else "8 to 10 comfortable reps"
+        effort = ("gentle", "moderate", "challenging")[intensity - 1]
 
-    effort = ("gentle", "moderate", "challenging")[intensity - 1]
     exercise = exercises[0] if exercises else "Bodyweight strength"
+    if tier == "recovery":
+        exercise = "Mobility flow"
     focus = {
         "Strength": "strength practice",
         "Muscle": "muscle-building strength practice",
@@ -174,14 +244,19 @@ def build_plan(
         "Energy": "steady, manageable movement",
     }.get(goal, "comfortable movement")
 
-    if adjusted:
+    if tier == "recovery":
         reason = (
-            f"Reduced to {effort} effort because your check-in reports "
-            f"{sleep_hours:g} hours of sleep, pain {pain}/10, and energy {energy}/5."
+            f"Recovery session because readiness is low "
+            f"(sleep {sleep_hours:g}h, pain {pain}/10, energy {energy}/5)."
+        )
+    elif adjusted:
+        reason = (
+            f"Reduced to {effort} effort from your logged state "
+            f"(sleep {sleep_hours:g}h, pain {pain}/10, energy {energy}/5)."
         )
     elif phase:
         reason = (
-            f"{phase} is a starting estimate for {focus}; "
+            f"{phase} is a starting prior for {focus}; "
             "today's reported state takes priority."
         )
     else:
@@ -191,12 +266,14 @@ def build_plan(
         )
 
     return {
-        "title": f"{effort.title()} {focus}",
+        "title": f"{effort.title()} {focus}" if tier != "recovery" else "Recovery mobility",
         "exercise": exercise,
-        "sets": 2 if intensity == 1 else 3,
-        "reps": "6 to 8 controlled reps" if intensity == 1 else "8 to 10 comfortable reps",
+        "sets": sets,
+        "reps": reps,
         "reason": reason,
         "adjusted": int(adjusted),
+        "readiness": round(readiness.r_hat, 4),
+        "tier": tier,
     }
 
 
@@ -227,6 +304,8 @@ def weekly_workout_schedule(
     sleep_hours: float,
     pain: int,
     today: date,
+    mood: str = "Okay",
+    readiness_weights: Sequence[float] | None = None,
 ) -> list[dict[str, object]]:
     if workouts_per_week not in range(1, 8):
         raise ValueError("Workouts per week must be between 1 and 7.")
@@ -305,6 +384,8 @@ def weekly_workout_schedule(
                 day_energy,
                 day_sleep,
                 day_pain,
+                mood=mood if item["is_today"] else "Okay",
+                readiness_weights=readiness_weights,
             )
             item.update(
                 {

@@ -10,10 +10,14 @@ from persistence import (
     generate_login_code,
     get_checkin,
     get_phase_lock,
+    get_readiness_weights,
     hash_login_code,
+    list_checkins,
     lock_phase_plan,
+    reset_readiness_weights,
     save_checkin,
     save_phase_workout_plan,
+    save_readiness_weights,
     stored_profile,
 )
 
@@ -87,6 +91,12 @@ class MemoryCollection:
                 and all(document.get(key) == value for key, value in query.items())
             }
         )
+
+    def delete_one(self, query):
+        for index, document in enumerate(self.documents):
+            if all(document.get(key) == value for key, value in query.items()):
+                del self.documents[index]
+                return
 
 
 class PersistenceTests(unittest.TestCase):
@@ -239,6 +249,41 @@ class PersistenceTests(unittest.TestCase):
                     "usual_split": "Full body",
                 }
             )
+
+    def test_readiness_weights_are_versioned_per_account(self):
+        weights_store = MemoryCollection()
+        save_readiness_weights(
+            weights_store,
+            "account-1",
+            [0.1] * 9,
+            version=1,
+        )
+        loaded = get_readiness_weights(weights_store, "account-1")
+        self.assertEqual(loaded, [0.1] * 9)
+        self.assertIsNone(get_readiness_weights(weights_store, "account-2"))
+        reset_readiness_weights(weights_store, "account-1")
+        self.assertIsNone(get_readiness_weights(weights_store, "account-1"))
+
+    def test_list_checkins_orders_by_date(self):
+        checkins = MemoryCollection()
+        values = {
+            "flow": "None",
+            "mood": "Okay",
+            "energy": 3,
+            "sleep_hours": 7,
+            "pain": 0,
+            "workout_done": False,
+            "severe_pain": False,
+            "irregular": False,
+            "pregnancy": False,
+        }
+        save_checkin(checkins, "account-1", values, date(2026, 10, 24))
+        save_checkin(checkins, "account-1", values, date(2026, 10, 20))
+        ordered = list_checkins(checkins, "account-1")
+        self.assertEqual(
+            [item["checkin_date"] for item in ordered],
+            ["2026-10-20", "2026-10-24"],
+        )
 
 
 if __name__ == "__main__":
