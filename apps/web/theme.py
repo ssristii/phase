@@ -185,19 +185,16 @@ def inject_theme(star_positions):
             white-space: nowrap;
             flex-shrink: 0;
         }
-        [data-testid="stVerticalBlock"]:has(.phase-header-menu-marker) {
-            display: none;
-        }
         @media (max-width: 640px) {
             [data-testid="stHorizontalBlock"]:has(.phase-header-brand) > [data-testid="column"]:nth-child(n+2) {
                 display: none !important;
             }
-            [data-testid="stVerticalBlock"]:has(.phase-header-menu-marker) {
-                display: block !important;
+            [data-testid="stPopoverButton"] {
+                display: inline-flex !important;
             }
         }
         @media (min-width: 641px) {
-            [data-testid="stVerticalBlock"]:has(.phase-header-menu-marker) {
+            [data-testid="stPopoverButton"] {
                 display: none !important;
             }
         }
