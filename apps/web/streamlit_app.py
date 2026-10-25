@@ -583,13 +583,6 @@ def show_voice_checkin() -> None:
                     height=120,
                     label_visibility="collapsed",
                 )
-                _raw_for_note = st.session_state.get("voice_transcript", "")
-                if isinstance(_raw_for_note, str) and strip_spoken_names(
-                    _raw_for_note
-                ) != _raw_for_note:
-                    st.caption("Removed a possible name")
-                    with st.expander("View original"):
-                        st.write(_raw_for_note)
             else:
                 st.markdown(
                     '<div style="display:flex;align-items:center;gap:0.65rem;margin:0.2rem 0 0.5rem;">'
@@ -723,11 +716,6 @@ def show_voice_checkin() -> None:
                     with urlopen(request, timeout=45) as response:
                         payload = json.loads(response.read().decode("utf-8"))
                     transcript = payload.get("text")
-                    if _dev_tools_enabled():
-                        print(
-                            f"voice transcript raw STT response: {transcript!r}",
-                            flush=True,
-                        )
                     silence_hallucinations = {
                         "thank you for your question",
                         "thanks for watching",
@@ -793,17 +781,6 @@ def show_voice_checkin() -> None:
                 redacted_transcript = strip_spoken_names(
                     strip_emojis(raw_transcript)
                 ).strip()
-                if _dev_tools_enabled():
-                    print(
-                        "voice transcript after redaction/sanitizing: "
-                        f"{redacted_transcript!r}",
-                        flush=True,
-                    )
-                    print(
-                        "voice transcript text sent to extraction: "
-                        f"{redacted_transcript!r}",
-                        flush=True,
-                    )
                 transcript = redacted_transcript
                 if not transcript:
                     st.error("Enter or correct the transcript before extraction.")
