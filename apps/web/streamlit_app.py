@@ -531,25 +531,23 @@ def show_profile_setup(account) -> None:
 
 
 def show_voice_checkin() -> None:
-    with st.expander("Voice check-in (record, then upload)", expanded=True):
-        st.write(
-            "Record up to 60 seconds. Say how your flow, mood, energy, sleep, "
-            "pain, and workout are going."
-        )
-        st.caption(
-            "Example: “I have light flow, feel low energy, slept five hours, "
-            "have moderate cramps, and did not work out.”"
-        )
-        st.caption(
-            "This is record-then-upload, not live transcription. Audio is sent "
-            "to the local Phase API. If microphone "
-            "recording fails, upload an audio file or use the tap form below."
-        )
-        st.caption(
-            "For best accuracy, record in a quiet place, keep the microphone "
-            "close, and speak clearly. Background noise can reduce both "
-            "transcription and extracted check-in values."
-        )
+    with st.expander("Speak your check-in", expanded=True):
+        st.write("Say how your flow, mood, energy, sleep, pain and workout are going.")
+        with st.expander("Tips", expanded=False):
+            st.caption(
+                "Example: “I have light flow, feel low energy, slept five hours, "
+                "have moderate cramps, and did not work out.”"
+            )
+            st.caption(
+                "Audio is sent to a third-party speech service to be transcribed "
+                "and is not saved to your account. If microphone recording fails, "
+                "upload an audio file or use the tap form below."
+            )
+            st.caption(
+                "For best accuracy, record in a quiet place, keep the microphone "
+                "close, and speak clearly. Background noise can reduce both "
+                "transcription and extracted check-in values."
+            )
         with st.container(border=True, key="card_voice_transcript"):
             # One header row: label left, Clear right, then body, then audio.
             # Clear must stay above the recorder (not in Streamlit chrome).
@@ -677,13 +675,13 @@ def show_voice_checkin() -> None:
                 height=0,
             )
             transcribe_voice = st.button(
-                "Transcribe with Cartesia",
+                "Transcribe",
                 key="transcribe-voice",
             )
             if voice_audio is not None:
-                st.caption("Recording ready. Click Transcribe with Cartesia.")
+                st.caption("Recording ready. Click Transcribe.")
             if uploaded_audio is not None:
-                st.caption("Uploaded file ready. Click Transcribe with Cartesia.")
+                st.caption("Uploaded file ready. Click Transcribe.")
         if transcribe_voice:
             if uploaded_audio is not None:
                 audio = uploaded_audio
@@ -1171,7 +1169,7 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
         cycle_lengths=cycle_state.valid_cycle_lengths,
     )
 
-    brand_col, update_col, edit_col, sign_out_col = st.columns((2, 1, 1, 1))
+    brand_col, buttons_col = st.columns((3, 5))
     with brand_col:
         st.markdown(
             '<div class="phase-header-brand">Phase</div>'
@@ -1196,22 +1194,24 @@ def show_dashboard(account, profile: dict, checkin: dict) -> None:
                 ):
                     st.session_state.pop(key, None)
                 st.rerun()
-    if update_col.button("Update how I feel", type="primary", key="header_update_feel"):
-        st.session_state["flow_step"] = "checkin"
-        st.rerun()
-    if edit_col.button("Edit today's check-in", type="secondary", key="header_edit_checkin"):
-        st.session_state["flow_step"] = "checkin"
-        st.rerun()
-    if sign_out_col.button("Sign out", type="tertiary", key="header_sign_out"):
-        clear_voice_text()
-        discard_audio_capture()
-        for key in (
-            "account_id",
-            "flow_step",
-            *CHECKIN_INPUT_KEYS,
-        ):
-            st.session_state.pop(key, None)
-        st.rerun()
+    with buttons_col:
+        update_col, edit_col, sign_out_col = st.columns((1, 1, 1))
+        if update_col.button("Update how I feel", type="primary", key="header_update_feel"):
+            st.session_state["flow_step"] = "checkin"
+            st.rerun()
+        if edit_col.button("Edit today's check-in", type="secondary", key="header_edit_checkin"):
+            st.session_state["flow_step"] = "checkin"
+            st.rerun()
+        if sign_out_col.button("Sign out", type="tertiary", key="header_sign_out"):
+            clear_voice_text()
+            discard_audio_capture()
+            for key in (
+                "account_id",
+                "flow_step",
+                *CHECKIN_INPUT_KEYS,
+            ):
+                st.session_state.pop(key, None)
+            st.rerun()
 
     st.title("Your Phase dashboard")
     st.caption("Your reported state leads today's plan.")

@@ -150,9 +150,15 @@ def inject_theme(star_positions):
         header, #MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDeployButton"] {
             display: none !important;
         }
+        [data-testid="stTitle"] h1 {
+            font-size: clamp(1.8rem, 3vw, 2.6rem) !important;
+        }
+        [data-testid="stHeaderActionElements"] {
+            display: none !important;
+        }
         [data-testid="stMainBlockContainer"] {
-            max-width: 720px !important;
-            padding-top: .75rem !important;
+            max-width: 1100px !important;
+            padding-top: 1.5rem !important;
             padding-bottom: 5rem !important;
         }
         [data-testid="stVerticalBlock"]:has(.phase-header-brand) {
@@ -163,6 +169,7 @@ def inject_theme(star_positions):
             display: flex !important;
             flex-wrap: nowrap !important;
             align-items: center !important;
+            justify-content: space-between !important;
             gap: 12px !important;
             width: 100% !important;
         }
@@ -180,10 +187,16 @@ def inject_theme(star_positions):
             color: var(--text-muted, #888);
             white-space: nowrap;
         }
+        @media (max-width: 900px) {
+            .phase-header-tagline {
+                display: none !important;
+            }
+        }
         [data-testid="stHorizontalBlock"]:has(.phase-header-brand) .stButton button,
         [data-testid="stHorizontalBlock"]:has(.phase-header-brand) button {
-            white-space: nowrap;
-            flex-shrink: 0;
+            white-space: nowrap !important;
+            min-width: max-content !important;
+            flex: 0 0 auto !important;
         }
         @media (max-width: 640px) {
             [data-testid="stHorizontalBlock"]:has(.phase-header-brand) > [data-testid="column"]:nth-child(n+2) {
