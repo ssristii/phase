@@ -108,21 +108,27 @@ def strip_emojis(text: str) -> str:
     return EMOJI_PATTERN.sub("", text)
 
 
-# Conservative spoken-name scrub before any storage of free text.
-NAME_PATTERN = re.compile(
-    r"\b(?:my name is|i am|i'm|this is)\s+[A-Z][a-z]{1,30}\b",
-    re.IGNORECASE,
-)
+# Spoken-name redaction lives in redaction.py so it can be unit-tested without
+# importing the Streamlit app. The transcript shown to the user stays raw.
+try:
+    from redaction import strip_spoken_names, NAME_PATTERN
+except Exception:  # pragma: no cover
+    import importlib.util
+    from pathlib import Path
 
-
-def strip_spoken_names(text: str) -> str:
-    return NAME_PATTERN.sub(lambda match: match.group(0).split()[0] + " [name]", text)
+    _spec = importlib.util.spec_from_file_location(
+        "redaction", Path(__file__).with_name("redaction.py")
+    )
+    _redaction = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_redaction)
+    strip_spoken_names = _redaction.strip_spoken_names
+    NAME_PATTERN = _redaction.NAME_PATTERN
 
 
 def clean_voice_transcript() -> None:
-    st.session_state["voice_transcript"] = strip_spoken_names(
-        strip_emojis(st.session_state.get("voice_transcript", ""))
-    )
+    # The transcript box shows the raw transcript exactly as transcribed.
+    # Redaction is applied only to the copy sent to a third-party service.
+    return None
 
 
 def clear_voice_text() -> None:
@@ -132,6 +138,7 @@ def clear_voice_text() -> None:
     st.session_state.pop("voice_g1_result", None)
     st.session_state.pop("voice_confirm_fields", None)
     st.session_state.pop("voice_field_provenance", None)
+    st.session_state.pop("voice_extract_success", None)
     discard_g1_audio()
 
 
@@ -729,9 +736,7 @@ def show_voice_checkin() -> None:
                         # Keep WAV in memory for G1 only; discard on Clear/save.
                         st.session_state["voice_wav_bytes"] = audio.getvalue()
                         st.session_state["voice_wav_type"] = audio_type
-                        st.session_state["pending_voice_transcript"] = strip_spoken_names(
-                            strip_emojis(transcript)
-                        )
+                        st.session_state["pending_voice_transcript"] = strip_emojis(transcript)
                         st.session_state["voice_transcribed"] = True
                         discard_audio_capture()
                         st.rerun()
@@ -824,6 +829,7 @@ def show_voice_checkin() -> None:
                         for field, key in input_keys.items():
                             if fields.get(field) is not None:
                                 st.session_state[key] = fields[field]
+                        st.session_state["voice_extract_success"] = True
                         st.success(
                             "Review the suggested values in the tap form and correct "
                             "anything that does not match how you feel. "
@@ -871,6 +877,12 @@ def show_daily_checkin(account) -> None:
     if "voice_extracted" in st.session_state:
         st.info(
             "Review and correct every voice suggestion before continuing."
+        )
+    if st.session_state.get("voice_extract_success"):
+        st.success(
+            "Heard values were copied into the form below. "
+            "Review and correct anything that is wrong, then click "
+            "\"Continue to my dashboard\" to save them."
         )
 
     initial_values = {
