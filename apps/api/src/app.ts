@@ -139,6 +139,84 @@ export interface AppConfig {
   cartesiaApiKey?: string;
 }
 
+function interactionText(interaction: unknown): string | undefined {
+  const value = interaction as {
+    output_text?: string;
+    steps?: Array<{ content?: Array<{ type?: string; text?: string }>; text?: string }>;
+  };
+  if (typeof value?.output_text === "string" && value.output_text.trim()) {
+    return value.output_text;
+  }
+  if (Array.isArray(value?.steps)) {
+    for (const step of value.steps) {
+      if (Array.isArray(step?.content)) {
+        for (const content of step.content) {
+          if (content?.type === "text" && typeof content.text === "string" && content.text.trim()) {
+            return content.text;
+          }
+        }
+      }
+      if (typeof step?.text === "string" && step.text.trim()) {
+        return step.text;
+      }
+    }
+  }
+  return undefined;
+}
+
+function parseCheckinTranscript(transcript: string): {
+  fields: Record<string, unknown>;
+  unfilled: string[];
+} {
+  const t = transcript.toLowerCase();
+  const fields: Record<string, unknown> = {};
+  if (/spotting/.test(t)) fields.flow = "Spotting";
+  else if (/very heavy/.test(t)) fields.flow = "Very heavy";
+  else if (/heavy/.test(t)) fields.flow = "Heavy";
+  else if (/medium|moderate/.test(t)) fields.flow = "Moderate";
+  else if (/light/.test(t)) fields.flow = "Light";
+  else if (/no flow|none/.test(t)) fields.flow = "None";
+  if (/anxious/.test(t)) fields.mood = "Anxious";
+  else if (/irritable/.test(t)) fields.mood = "Irritable";
+  else if (/low|flat/.test(t)) fields.mood = "Low";
+  else if (/okay|\bok\b/.test(t)) fields.mood = "Okay";
+  else if (/great|good/.test(t)) fields.mood = "Good";
+  const energy = t.match(/energy[^0-9]{0,12}(\d)/)?.[1] ?? t.match(/(\d)\s*(?:\/|out of)\s*5/)?.[1];
+  if (energy) {
+    const n = Number(energy);
+    if (n >= 0 && n <= 5) fields.energy = n;
+  }
+  const sleep = t.match(/slept\s+(\d+(?:\.\d+)?)/)?.[1] ?? t.match(/sleep[^0-9]{0,12}(\d+(?:\.\d+)?)/)?.[1];
+  if (sleep) {
+    const n = Number(sleep);
+    if (n >= 0 && n <= 12) fields.sleep_hours = n;
+  }
+  const pain = t.match(/pain[^0-9]{0,12}(\d+)/)?.[1] ?? t.match(/(\d+)\s*(?:\/|out of)\s*10/)?.[1];
+  if (pain) {
+    const n = Number(pain);
+    if (n >= 0 && n <= 10) fields.pain = n;
+  }
+  if (/no workout|didn't work out|did not work out/.test(t)) fields.workout_done = false;
+  else if (/worked out|workout done|exercised/.test(t)) fields.workout_done = true;
+  if (/no severe pain/.test(t)) fields.severe_pain = false;
+  else if (/severe pain/.test(t)) fields.severe_pain = true;
+  if (/irregular (cycle|period)s?/.test(t)) fields.persistently_irregular_cycles = true;
+  if (/negative pregnancy test/.test(t)) fields.positive_pregnancy_test = false;
+  else if (/positive pregnancy test/.test(t)) fields.positive_pregnancy_test = true;
+  const all = [
+    "flow",
+    "mood",
+    "energy",
+    "sleep_hours",
+    "pain",
+    "workout_done",
+    "severe_pain",
+    "persistently_irregular_cycles",
+    "positive_pregnancy_test",
+  ];
+  return { fields, unfilled: all.filter((field) => !(field in fields)) };
+}
+
 export function createApp(config: AppConfig = {}): express.Express {
   const app = express();
 
@@ -157,7 +235,13 @@ export function createApp(config: AppConfig = {}): express.Express {
     }
 
     try {
-      const client = new GoogleGenAI({ apiKey: config.geminiApiKey });
+      const client = new GoogleGenAI({
+        apiKey: config.geminiApiKey,
+        // Disable SDK retries so a provider error (e.g. 429) is reported
+        // instead of being masked by a retry body-clone failure.
+        // Signature: new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts } } }).
+        httpOptions: { retryOptions: { attempts: 1 } },
+      });
       const prompt =
         "Do not use emojis. Return a short hello for the Phase integration check.";
       // Gemini docs: const interaction = await client.interactions.create({ model: "gemini-3.8-flash", input: prompt, response_format: { type: "text", mime_type: "application/json", schema: geminiJsonSchema } });
@@ -170,7 +254,7 @@ export function createApp(config: AppConfig = {}): express.Express {
           schema: geminiJsonSchema,
         },
       });
-      const output = interaction.output_text;
+      const output = interactionText(interaction);
       if (!output) {
         throw new Error("Gemini returned no text output");
       }
@@ -206,7 +290,7 @@ export function createApp(config: AppConfig = {}): express.Express {
           schema: checkinJsonSchema,
         },
       });
-      const output = interaction.output_text;
+      const output = interactionText(interaction);
       if (!output) {
         lastValidationError = new Error("Gemini returned no text output");
         continue;
@@ -250,7 +334,13 @@ export function createApp(config: AppConfig = {}): express.Express {
     }
 
     try {
-      const client = new GoogleGenAI({ apiKey: config.geminiApiKey });
+      const client = new GoogleGenAI({
+        apiKey: config.geminiApiKey,
+        // Disable SDK retries so a provider error (e.g. 429) is reported
+        // instead of being masked by a retry body-clone failure.
+        // Signature: new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts } } }).
+        httpOptions: { retryOptions: { attempts: 1 } },
+      });
       const prompt = [
         ...checkinPromptLines,
         "",
@@ -260,7 +350,16 @@ export function createApp(config: AppConfig = {}): express.Express {
       const fields = await extractCheckinFields(client, prompt);
       response.json({ fields, source: "transcript" });
     } catch (error) {
-      next(error);
+      if (process.env.NODE_ENV === "development") {
+        console.log("fallback parser used");
+      }
+      const fallback = parseCheckinTranscript(requestResult.data.transcript);
+      response.json({
+        fields: fallback.fields,
+        unfilled: fallback.unfilled,
+        source: "fallback",
+      });
+      return;
     }
   });
 
@@ -312,7 +411,13 @@ export function createApp(config: AppConfig = {}): express.Express {
         typeof transcriptHeader === "string" ? transcriptHeader.trim() : "";
 
       try {
-        const client = new GoogleGenAI({ apiKey: config.geminiApiKey });
+        const client = new GoogleGenAI({
+        apiKey: config.geminiApiKey,
+        // Disable SDK retries so a provider error (e.g. 429) is reported
+        // instead of being masked by a retry body-clone failure.
+        // Signature: new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts } } }).
+        httpOptions: { retryOptions: { attempts: 1 } },
+      });
         const textPart = [
           ...checkinPromptLines,
           "Use the audio as the primary signal. The optional transcript is a helper only.",
@@ -330,6 +435,18 @@ export function createApp(config: AppConfig = {}): express.Express {
         ]);
         response.json({ fields, source: "audio" });
       } catch (error) {
+        if (transcript) {
+          if (process.env.NODE_ENV === "development") {
+            console.log("fallback parser used");
+          }
+          const fallback = parseCheckinTranscript(transcript);
+          response.json({
+            fields: fallback.fields,
+            unfilled: fallback.unfilled,
+            source: "fallback",
+          });
+          return;
+        }
         next(error);
       }
     },
@@ -347,7 +464,13 @@ export function createApp(config: AppConfig = {}): express.Express {
       return;
     }
     try {
-      const client = new GoogleGenAI({ apiKey: config.geminiApiKey });
+      const client = new GoogleGenAI({
+        apiKey: config.geminiApiKey,
+        // Disable SDK retries so a provider error (e.g. 429) is reported
+        // instead of being masked by a retry body-clone failure.
+        // Signature: new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts } } }).
+        httpOptions: { retryOptions: { attempts: 1 } },
+      });
       const prompt = [
         "Write one or two short spoken sentences confirming the user's check-in.",
         "Warm, plain language. No medical diagnosis language. No emojis.",
@@ -529,7 +652,17 @@ export function createApp(config: AppConfig = {}): express.Express {
       response.status(413).json({ error: "Audio file exceeds the 10 MB limit" });
       return;
     }
-    response.status(502).json({ error: "The requested provider operation failed" });
+    const status =
+      typeof (error as { status?: unknown }).status === "number"
+        ? (error as { status: number }).status
+        : 502;
+    const isDevelopment = process.env.NODE_ENV === "development";
+    const message = isDevelopment
+      ? error instanceof Error && error.message
+        ? error.message
+        : "The requested provider operation failed"
+      : "Voice check-in is busy, please try again or use the form.";
+    response.status(status).json({ error: message });
   };
   app.use(errorHandler);
 
