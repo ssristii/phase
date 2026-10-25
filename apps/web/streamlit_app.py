@@ -108,21 +108,27 @@ def strip_emojis(text: str) -> str:
     return EMOJI_PATTERN.sub("", text)
 
 
-# Conservative spoken-name scrub before any storage of free text.
-NAME_PATTERN = re.compile(
-    r"\b(?:my name is|i am|i'm|this is)\s+[A-Z][a-z]{1,30}\b",
-    re.IGNORECASE,
-)
+# Spoken-name redaction lives in redaction.py so it can be unit-tested without
+# importing the Streamlit app. The transcript shown to the user stays raw.
+try:
+    from redaction import strip_spoken_names, NAME_PATTERN
+except Exception:  # pragma: no cover
+    import importlib.util
+    from pathlib import Path
 
-
-def strip_spoken_names(text: str) -> str:
-    return NAME_PATTERN.sub(lambda match: match.group(0).split()[0] + " [name]", text)
+    _spec = importlib.util.spec_from_file_location(
+        "redaction", Path(__file__).with_name("redaction.py")
+    )
+    _redaction = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_redaction)
+    strip_spoken_names = _redaction.strip_spoken_names
+    NAME_PATTERN = _redaction.NAME_PATTERN
 
 
 def clean_voice_transcript() -> None:
-    st.session_state["voice_transcript"] = strip_spoken_names(
-        strip_emojis(st.session_state.get("voice_transcript", ""))
-    )
+    # The transcript box must show the raw transcript exactly as transcribed.
+    # Redaction is applied only to the copy sent to a third-party service.
+    return None
 
 
 def clear_voice_text() -> None:
@@ -576,8 +582,14 @@ def show_voice_checkin() -> None:
                     key="voice_transcript",
                     height=120,
                     label_visibility="collapsed",
-                    on_change=clean_voice_transcript,
                 )
+                _raw_for_note = st.session_state.get("voice_transcript", "")
+                if isinstance(_raw_for_note, str) and strip_spoken_names(
+                    _raw_for_note
+                ) != _raw_for_note:
+                    st.caption("Removed a possible name")
+                    with st.expander("View original"):
+                        st.write(_raw_for_note)
             else:
                 st.markdown(
                     '<div style="display:flex;align-items:center;gap:0.65rem;margin:0.2rem 0 0.5rem;">'
@@ -711,6 +723,11 @@ def show_voice_checkin() -> None:
                     with urlopen(request, timeout=45) as response:
                         payload = json.loads(response.read().decode("utf-8"))
                     transcript = payload.get("text")
+                    if _dev_tools_enabled():
+                        print(
+                            f"voice transcript raw STT response: {transcript!r}",
+                            flush=True,
+                        )
                     silence_hallucinations = {
                         "thank you for your question",
                         "thanks for watching",
@@ -729,9 +746,9 @@ def show_voice_checkin() -> None:
                         # Keep WAV in memory for G1 only; discard on Clear/save.
                         st.session_state["voice_wav_bytes"] = audio.getvalue()
                         st.session_state["voice_wav_type"] = audio_type
-                        st.session_state["pending_voice_transcript"] = strip_spoken_names(
-                            strip_emojis(transcript)
-                        )
+                        st.session_state["pending_voice_transcript"] = transcript
+
+
                         st.session_state["voice_transcribed"] = True
                         discard_audio_capture()
                         st.rerun()
@@ -769,9 +786,25 @@ def show_voice_checkin() -> None:
                 "Extract check-in values",
                 key="extract-voice-fields",
             ):
-                transcript = strip_spoken_names(
-                    strip_emojis(st.session_state["voice_transcript"])
+                raw_transcript = st.session_state.get("voice_transcript", "")
+                if not isinstance(raw_transcript, str):
+                    raw_transcript = str(raw_transcript or "")
+                st.session_state["voice_transcript_raw"] = raw_transcript
+                redacted_transcript = strip_spoken_names(
+                    strip_emojis(raw_transcript)
                 ).strip()
+                if _dev_tools_enabled():
+                    print(
+                        "voice transcript after redaction/sanitizing: "
+                        f"{redacted_transcript!r}",
+                        flush=True,
+                    )
+                    print(
+                        "voice transcript text sent to extraction: "
+                        f"{redacted_transcript!r}",
+                        flush=True,
+                    )
+                transcript = redacted_transcript
                 if not transcript:
                     st.error("Enter or correct the transcript before extraction.")
                 else:
