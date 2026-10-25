@@ -240,7 +240,7 @@ export function createApp(config: AppConfig = {}): express.Express {
         // Disable SDK retries so a provider error (e.g. 429) is reported
         // instead of being masked by a retry body-clone failure.
         // Signature: new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts } } }).
-        httpOptions: { retryOptions: { attempts: 1 } },
+        httpOptions: { timeout: 30000, retryOptions: { attempts: 1 }, fetch: ((input: unknown, init?: RequestInit) => fetch(input as RequestInfo, { ...init, signal: init?.signal ?? AbortSignal.timeout(30000) })) as any },
       });
       const prompt =
         "Do not use emojis. Return a short hello for the Phase integration check.";
@@ -339,7 +339,7 @@ export function createApp(config: AppConfig = {}): express.Express {
         // Disable SDK retries so a provider error (e.g. 429) is reported
         // instead of being masked by a retry body-clone failure.
         // Signature: new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts } } }).
-        httpOptions: { retryOptions: { attempts: 1 } },
+        httpOptions: { timeout: 30000, retryOptions: { attempts: 1 }, fetch: ((input: unknown, init?: RequestInit) => fetch(input as RequestInfo, { ...init, signal: init?.signal ?? AbortSignal.timeout(30000) })) as any },
       });
       const prompt = [
         ...checkinPromptLines,
@@ -416,7 +416,7 @@ export function createApp(config: AppConfig = {}): express.Express {
         // Disable SDK retries so a provider error (e.g. 429) is reported
         // instead of being masked by a retry body-clone failure.
         // Signature: new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts } } }).
-        httpOptions: { retryOptions: { attempts: 1 } },
+        httpOptions: { timeout: 30000, retryOptions: { attempts: 1 }, fetch: ((input: unknown, init?: RequestInit) => fetch(input as RequestInfo, { ...init, signal: init?.signal ?? AbortSignal.timeout(30000) })) as any },
       });
         const textPart = [
           ...checkinPromptLines,
@@ -469,7 +469,7 @@ export function createApp(config: AppConfig = {}): express.Express {
         // Disable SDK retries so a provider error (e.g. 429) is reported
         // instead of being masked by a retry body-clone failure.
         // Signature: new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts } } }).
-        httpOptions: { retryOptions: { attempts: 1 } },
+        httpOptions: { timeout: 30000, retryOptions: { attempts: 1 }, fetch: ((input: unknown, init?: RequestInit) => fetch(input as RequestInfo, { ...init, signal: init?.signal ?? AbortSignal.timeout(30000) })) as any },
       });
       const prompt = [
         "Write one or two short spoken sentences confirming the user's check-in.",
