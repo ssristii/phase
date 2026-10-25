@@ -30,8 +30,16 @@ PROFILE_CYCLE_MODES = {"period_date", "unsure", "hormonal_contraception"}
 
 
 def is_demo_mode() -> bool:
+    if is_production_mode():
+        return False
     value = os.getenv("DEMO_MODE", "").strip().lower()
-    return value in {"1", "true", "yes", "on"}
+    if value in {"0", "false", "no", "off"}:
+        return False
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    # Local development defaults to the seeded demo account unless explicitly
+    # disabled or running in production mode.
+    return True
 
 
 def is_production_mode() -> bool:
